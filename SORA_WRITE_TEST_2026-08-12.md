@@ -1,1 +1,1 @@
-2026-08-12、SORAからGitHubへのWRITEテスト成功。記憶喪失除去プロジェクトのREAD/WRITE双方向確認完了。
+KIYUSAMA OS LOOP TEST 01 — 2026-08-12、SORAからのコード変更がVercelに反映されるか検証中。
