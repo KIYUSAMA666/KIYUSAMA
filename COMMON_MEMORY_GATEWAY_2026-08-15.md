@@ -99,3 +99,162 @@ No COMMON MEMORY-specific Security Advisor finding was returned. Existing unrela
 Core principle preserved:
 AI MAY OPERATE MEMORY.
 AI DOES NOT RECEIVE DATABASE-WIDE AUTHORITY.
+
+---
+
+## Capability Authorization Hardening Update — 2026-08-15
+
+### Executor and Auditor Separation
+- `common_memory_executor`: NOLOGIN, no table privileges, no dangerous role attributes.
+- `common_memory_kira_auditor`: READ-only audit role.
+- KIRA auditor verification: SELECT only on `knowledge_entries` and `audit_log`; INSERT/UPDATE/DELETE denied.
+- Executor verification: direct SELECT/INSERT/UPDATE/DELETE on `knowledge_entries` and `audit_log` denied.
+- Executor can execute only approved authorization boundary functions.
+
+### Audit Immutability Boundary
+SORA/Gateway audit permissions were verified so audit records can be inserted/read but cannot be updated or deleted through the runtime identity.
+
+### DB-internal Secret Verification
+A SORA COMMON MEMORY write token was generated and stored inside Supabase Vault without returning the plaintext token. `verify_sora_write_token(text)` verifies candidates inside the database and exposes only a boolean result.
+
+Verification:
+- invalid candidate -> false
+- correct internal candidate -> true
+- public / anon / authenticated EXECUTE -> denied
+- dedicated authorized role only -> allowed
+
+### Executor Write Boundary
+A SECURITY DEFINER write boundary was implemented so Executor does not receive direct table write privileges.
+
+Behavior verified:
+- invalid auth -> BLOCKED and audit record
+- normal type -> DRAFT
+- CORE / DECISION / RULE -> forced PENDING_APPROVAL
+- CORE cannot be automatically activated by Executor
+- successful write -> audit SUCCESS
+- secret plaintext is not stored in audit evidence
+
+Independent READ BACK was performed after boundary writes. Test memory rows were removed after verification; audit evidence was retained.
+
+### HTTP -> Executor Boundary Proof
+HTTP transport through the Edge Function was verified separately from DB-internal execution.
+
+Verified chain:
+HTTP -> Edge Function -> dedicated gateway login -> executor boundary -> WRITE -> READ BACK -> cleanup -> audit
+
+Observed proof:
+- HTTP 200
+- upstream 200
+- DRAFT result
+- readback_ok=true
+- cleanup=deleted
+- secret_logged=false
+
+### One-time Capability Model
+Long-lived SORA-held secrets were rejected as the production design. A short-lived one-time capability model was implemented instead.
+
+Capability properties:
+- cryptographically random token
+- only token hash stored in DB
+- single use
+- bounded TTL
+- action bound to WRITE_MEMORY
+- subject bound
+- full payload bound by SHA-256 over type / subject_key / title / content / version / source_ref
+- replay rejected
+- payload tampering rejected
+
+Verification:
+- first valid use -> success
+- replay -> ALREADY_USED
+- content tamper -> NOT_FOUND_OR_PAYLOAD_MISMATCH
+- type tamper -> NOT_FOUND_OR_PAYLOAD_MISMATCH
+- CORE -> PENDING_APPROVAL
+- test records cleaned up
+
+### TTL Security Bug Found and Fixed
+During real expiry testing, the first expiry attempt unexpectedly succeeded.
+
+Root cause:
+PostgreSQL `now()` is transaction-stable. A test that issued a 30-second capability and then called `pg_sleep(31)` inside the same transaction still saw the transaction-start timestamp, so expiry did not advance.
+
+Remediation:
+- capability issuance `expires_at` changed from `now()` to `clock_timestamp()`
+- expiry comparison changed from `now()` to `clock_timestamp()`
+- `used_at` recording changed to `clock_timestamp()`
+
+Re-test with real elapsed time:
+- TTL: 30 seconds
+- wait: 31 seconds
+- result: EXECUTOR_CAPABILITY_FAILED / EXPIRED
+- stored_rows=0
+- secret_logged=false
+
+TTL expiry proof: A.
+
+### Replay Concurrency Proof
+Two requests using the same capability were observed within approximately 0.318 seconds:
+- first request -> SUCCESS
+- second request -> BLOCKED / ALREADY_USED
+
+This confirms the row-lock/single-use boundary prevents a second use after the first capability consumption.
+
+### Direct Gateway Write Privileges Reduced
+After capability routing was established, legacy direct table write privileges on `common_memory_gateway_login` were removed.
+
+Current effective `knowledge_entries` privileges for gateway login:
+- SELECT: true
+- INSERT: false
+- UPDATE: false
+- DELETE: false
+
+WRITE is therefore intended to pass only through the capability wrapper/boundary.
+
+### Legacy Capability Path Closed
+The older subject-only 3-argument capability consume path was identified as unnecessary after full-payload binding was implemented.
+
+Its Executor EXECUTE privilege was revoked. The old capability issue path without payload hash is also not executable by runtime identities.
+
+### Test Cleanup
+Final verification:
+- temporary capability/HTTP knowledge rows: 0
+- `pg_net`: removed
+- temporary HTTP test endpoints: overwritten with HTTP 410 disabled handlers and JWT verification enabled
+- gateway direct INSERT/UPDATE/DELETE: false
+- legacy subject-only consume EXECUTE for Executor: false
+
+### Current Production State
+Function: `common-memory-test`
+Version: 19
+Status: ACTIVE
+verify_jwt: true
+
+Current actions:
+- `read`: enabled
+- `write`: still HTTP 403 / LOCKED
+- `capability_write_test`: test-only capability path present for verification
+
+Production WRITE has NOT been opened yet.
+
+### Updated Security Status
+- Dedicated DB identity isolation: A
+- HTTP READ proof: A
+- Historical functional HTTP WRITE proof: A
+- Executor boundary: A
+- KIRA audit READ role: A
+- Capability single-use: A
+- Replay resistance: A
+- Payload tamper resistance: A
+- Type tamper resistance: A
+- CORE approval gate: A
+- Real TTL expiry: A after clock_timestamp fix
+- Test cleanup: A
+- Production WRITE release: PENDING FINAL TRIGGER / AUTHORIZATION DECISION
+
+Principle preserved:
+
+NO LONG-LIVED SORA SECRET.
+NO DIRECT EXECUTOR TABLE WRITE.
+NO DIRECT GATEWAY TABLE WRITE.
+ONE REQUEST, ONE CAPABILITY, ONE AUDITED WRITE.
+CORE / DECISION / RULE REQUIRE KIYUSAMA APPROVAL BEFORE ACTIVE STATE.
