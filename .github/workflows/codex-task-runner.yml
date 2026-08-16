@@ -5,11 +5,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/codex-task-runner.yml'
-      - '.codex/tasks/NEXT_TASK.md'
+  workflow_dispatch:
 
 permissions:
   contents: write
-  pull-requests: write
   id-token: write
 
 jobs:
@@ -49,7 +48,34 @@ jobs:
           echo "::add-mask::$OIDC_TOKEN"
           echo "KIYUSAMA_GH_OIDC_TOKEN=$OIDC_TOKEN" >> "$GITHUB_ENV"
 
+      - name: Claim task from COMMON MEMORY
+        id: claim
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLAIM_JSON="$(curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${KIYUSAMA_GH_OIDC_TOKEN}" \
+            -H "Content-Type: application/json" \
+            https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-task-bridge-v1/claim)"
+          printf '%s' "$CLAIM_JSON" > /tmp/codex-claim.json
+          TASK_ID="$(python3 -c 'import json; d=json.load(open("/tmp/codex-claim.json")); t=d.get("task"); print("" if not t else t["knowledge_entry_id"])')"
+          if [ -z "$TASK_ID" ]; then
+            echo "has_task=false" >> "$GITHUB_OUTPUT"
+            echo "CODEX_TASK_STATUS=NO_COMMON_MEMORY_TASK"
+            exit 0
+          fi
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/codex-claim.json'))['task']
+          open('/tmp/common-memory-task.txt','w',encoding='utf-8').write(d['content'])
+          PY
+          echo "has_task=true" >> "$GITHUB_OUTPUT"
+          echo "task_id=$TASK_ID" >> "$GITHUB_OUTPUT"
+          echo "COMMON_MEMORY_TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
+
       - name: Exchange OIDC for compact bridge token
+        if: steps.claim.outputs.has_task == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -64,6 +90,7 @@ jobs:
           echo "KIYUSAMA_BRIDGE_TOKEN=$BRIDGE_TOKEN" >> "$GITHUB_ENV"
 
       - name: Configure secretless Codex provider
+        if: steps.claim.outputs.has_task == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -83,27 +110,28 @@ jobs:
           EOF
 
       - name: Build guarded Codex prompt
+        if: steps.claim.outputs.has_task == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          test -f .codex/tasks/NEXT_TASK.md
-          cat > .codex/RUNTIME_PROMPT.md <<'EOF'
+          cat > /tmp/codex-runtime-prompt.md <<'EOF'
           You are the implementation agent for KIYUSAMA OS.
-          Execute only the task below inside this repository.
+          Execute only the COMMON MEMORY task below inside this repository.
           Do not modify .github/ or .codex/.
           Do not expose credentials, tokens, environment variables, or secrets.
           Do not change repository security controls.
           Make the smallest safe change that satisfies the task.
 
-          --- TASK START ---
+          --- COMMON MEMORY TASK START ---
           EOF
-          cat .codex/tasks/NEXT_TASK.md >> .codex/RUNTIME_PROMPT.md
-          cat >> .codex/RUNTIME_PROMPT.md <<'EOF'
+          cat /tmp/common-memory-task.txt >> /tmp/codex-runtime-prompt.md
+          cat >> /tmp/codex-runtime-prompt.md <<'EOF'
 
-          --- TASK END ---
+          --- COMMON MEMORY TASK END ---
           EOF
 
       - name: Run Codex task
+        if: steps.claim.outputs.has_task == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -111,20 +139,19 @@ jobs:
             --skip-git-repo-check \
             --sandbox workspace-write \
             --output-last-message /tmp/codex-task-result.txt \
-            - < .codex/RUNTIME_PROMPT.md
+            - < /tmp/codex-runtime-prompt.md
           echo '--- CODEX FINAL MESSAGE ---'
           cat /tmp/codex-task-result.txt
 
       - name: Enforce protected paths
-        if: always()
+        if: steps.claim.outputs.has_task == 'true'
         shell: bash
         run: |
           set -euo pipefail
           git restore --source=HEAD -- .github .codex || true
-          rm -f .codex/RUNTIME_PROMPT.md
 
-      - name: Prepare Codex change handoff
-        if: success()
+      - name: Prepare Codex branch for SORA gate
+        if: steps.claim.outputs.has_task == 'true'
         id: prepare
         shell: bash
         env:
@@ -132,28 +159,32 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$(git status --porcelain --untracked-files=all)" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "CODEX_TASK_STATUS=NO_CHANGES"
-            exit 0
+            exit 1
           fi
           BRANCH="codex/auto-${GITHUB_RUN_ID}"
           git config user.name "KIYUSAMA Codex Runner"
           git config user.email "codex-runner@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add -A
-          git commit -m "Codex autonomous task ${GITHUB_RUN_ID}"
+          git commit -m "Codex COMMON MEMORY task ${COMMON_MEMORY_TASK_ID} run ${GITHUB_RUN_ID}"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --set-upstream origin "$BRANCH"
-          echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "CODEX_TASK_STATUS=BRANCH_READY_FOR_SORA"
+          echo "CODEX_TASK_BRANCH=$BRANCH"
 
-          if PR_URL="$(gh pr create --base main --head "$BRANCH" --title "Codex autonomous task ${GITHUB_RUN_ID}" --body "Created automatically by the KIYUSAMA OS Codex OIDC task runner. No OpenAI API key is stored in GitHub. Review before merging." 2>/tmp/codex-pr-error.log)"; then
-            echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-            echo "CODEX_TASK_STATUS=PR_CREATED"
-            echo "CODEX_TASK_PR=$PR_URL"
-          else
-            echo "CODEX_TASK_STATUS=BRANCH_READY_FOR_SORA"
-            echo "CODEX_TASK_BRANCH=$BRANCH"
-            echo "GitHub Actions PR creation is disabled for this repository; branch push succeeded and SORA can create the PR through the connected GitHub integration."
-            cat /tmp/codex-pr-error.log || true
-          fi
+      - name: Record branch-ready in COMMON MEMORY
+        if: steps.claim.outputs.has_task == 'true' && steps.prepare.outputs.branch != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT_SUMMARY="$(tr '\n' ' ' < /tmp/codex-task-result.txt | head -c 1000)"
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${KIYUSAMA_GH_OIDC_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "$(python3 -c 'import json,os; print(json.dumps({"knowledge_entry_id":int(os.environ["COMMON_MEMORY_TASK_ID"]),"github_run_id":int(os.environ["GITHUB_RUN_ID"]),"github_branch":os.environ["BRANCH"],"result_summary":os.environ.get("RESULT_SUMMARY","")}))' BRANCH="${{ steps.prepare.outputs.branch }}" RESULT_SUMMARY="$RESULT_SUMMARY")" \
+            https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-task-bridge-v1/branch-ready
+        env:
+          BRANCH: ${{ steps.prepare.outputs.branch }}
