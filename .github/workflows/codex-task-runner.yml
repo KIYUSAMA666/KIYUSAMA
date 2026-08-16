@@ -123,7 +123,7 @@ jobs:
           git restore --source=HEAD -- .github .codex || true
           rm -f .codex/RUNTIME_PROMPT.md
 
-      - name: Prepare Codex change PR
+      - name: Prepare Codex change handoff
         if: success()
         id: prepare
         shell: bash
@@ -144,8 +144,16 @@ jobs:
           git commit -m "Codex autonomous task ${GITHUB_RUN_ID}"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --set-upstream origin "$BRANCH"
-          PR_URL="$(gh pr create --base main --head "$BRANCH" --title "Codex autonomous task ${GITHUB_RUN_ID}" --body "Created automatically by the KIYUSAMA OS Codex OIDC task runner. No OpenAI API key is stored in GitHub. Review before merging.")"
           echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-          echo "CODEX_TASK_STATUS=PR_CREATED"
-          echo "CODEX_TASK_PR=$PR_URL"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+          if PR_URL="$(gh pr create --base main --head "$BRANCH" --title "Codex autonomous task ${GITHUB_RUN_ID}" --body "Created automatically by the KIYUSAMA OS Codex OIDC task runner. No OpenAI API key is stored in GitHub. Review before merging." 2>/tmp/codex-pr-error.log)"; then
+            echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+            echo "CODEX_TASK_STATUS=PR_CREATED"
+            echo "CODEX_TASK_PR=$PR_URL"
+          else
+            echo "CODEX_TASK_STATUS=BRANCH_READY_FOR_SORA"
+            echo "CODEX_TASK_BRANCH=$BRANCH"
+            echo "GitHub Actions PR creation is disabled for this repository; branch push succeeded and SORA can create the PR through the connected GitHub integration."
+            cat /tmp/codex-pr-error.log || true
+          fi
