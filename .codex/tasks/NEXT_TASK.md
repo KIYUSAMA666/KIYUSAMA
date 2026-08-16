@@ -1,9 +1,9 @@
-Create a new file at the repository root named CODEX_PR_PIPELINE_TEST_2026-08-17.md. Its complete content must be exactly:
+Create a new file at the repository root named CODEX_SORA_HANDOFF_TEST_2026-08-17.md. Its complete content must be exactly:
 
-# CODEX PR PIPELINE TEST — 2026-08-17
+# CODEX SORA HANDOFF TEST — 2026-08-17
 
-SORA -> GitHub Actions -> GitHub OIDC -> Supabase secure proxy -> OpenAI Codex CLI -> change detection -> PR
+Codex creates -> branch push -> SORA GitHub integration creates PR -> merge
 
-STATUS: PR_PIPELINE_TEST
+STATUS: HANDOFF_TEST
 
 Do not modify any other file.
