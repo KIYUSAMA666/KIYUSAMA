@@ -121,6 +121,7 @@ jobs:
         run: |
           set -euo pipefail
           git restore --source=HEAD -- .github .codex || true
+          rm -f .codex/RUNTIME_PROMPT.md
 
       - name: Prepare Codex change PR
         if: success()
@@ -130,7 +131,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ -z "$(git status --porcelain)" ]; then
+          if [ -z "$(git status --porcelain --untracked-files=all)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "CODEX_TASK_STATUS=NO_CHANGES"
             exit 0
