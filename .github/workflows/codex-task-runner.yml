@@ -1,6 +1,8 @@
 name: Codex Task Runner
 
 on:
+  schedule:
+    - cron: '*/5 * * * *'
   push:
     branches: [main]
     paths:
@@ -11,6 +13,10 @@ permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: codex-common-memory-runner
+  cancel-in-progress: false
+
 jobs:
   run-task:
     runs-on: ubuntu-latest
@@ -20,22 +26,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           persist-credentials: false
-
-      - name: Install Codex CLI
-        run: npm install -g @openai/codex@0.144.5
-
-      - name: Enable Linux sandbox prerequisites
-        shell: bash
-        run: |
-          set -euo pipefail
-          current_userns="$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || true)"
-          if [ -n "$current_userns" ] && [ "$current_userns" != "1" ]; then
-            sudo sysctl -w kernel.unprivileged_userns_clone=1
-          fi
-          current_apparmor="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || true)"
-          if [ -n "$current_apparmor" ] && [ "$current_apparmor" != "0" ]; then
-            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          fi
 
       - name: Mint GitHub OIDC token
         shell: bash
@@ -73,6 +63,24 @@ jobs:
           echo "has_task=true" >> "$GITHUB_OUTPUT"
           echo "task_id=$TASK_ID" >> "$GITHUB_OUTPUT"
           echo "COMMON_MEMORY_TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
+
+      - name: Install Codex CLI
+        if: steps.claim.outputs.has_task == 'true'
+        run: npm install -g @openai/codex@0.144.5
+
+      - name: Enable Linux sandbox prerequisites
+        if: steps.claim.outputs.has_task == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_userns="$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || true)"
+          if [ -n "$current_userns" ] && [ "$current_userns" != "1" ]; then
+            sudo sysctl -w kernel.unprivileged_userns_clone=1
+          fi
+          current_apparmor="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || true)"
+          if [ -n "$current_apparmor" ] && [ "$current_apparmor" != "0" ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
 
       - name: Exchange OIDC for compact bridge token
         if: steps.claim.outputs.has_task == 'true'
