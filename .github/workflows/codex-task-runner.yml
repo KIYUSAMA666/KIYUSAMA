@@ -33,6 +33,20 @@ jobs:
           echo "::add-mask::$OIDC_TOKEN"
           echo "KIYUSAMA_GH_OIDC_TOKEN=$OIDC_TOKEN" >> "$GITHUB_ENV"
 
+      - name: Exchange OIDC for compact bridge token
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN_JSON="$(curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${KIYUSAMA_GH_OIDC_TOKEN}" \
+            -H "Content-Type: application/json" \
+            https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-openai-proxy-v1/token)"
+          BRIDGE_TOKEN="$(printf '%s' "$TOKEN_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+          test "${#BRIDGE_TOKEN}" -lt 1024
+          echo "::add-mask::$BRIDGE_TOKEN"
+          echo "KIYUSAMA_BRIDGE_TOKEN=$BRIDGE_TOKEN" >> "$GITHUB_ENV"
+
       - name: Build guarded Codex prompt
         shell: bash
         run: |
@@ -58,19 +72,21 @@ jobs:
         id: run_codex
         uses: openai/codex-action@v1
         with:
-          openai-api-key: ${{ env.KIYUSAMA_GH_OIDC_TOKEN }}
+          openai-api-key: ${{ env.KIYUSAMA_BRIDGE_TOKEN }}
           responses-api-endpoint: https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-openai-proxy-v1/v1/responses
           permission-profile: ':workspace'
           safety-strategy: drop-sudo
           prompt-file: .codex/RUNTIME_PROMPT.md
 
       - name: Enforce protected paths
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
           git restore --source=HEAD -- .github .codex || true
 
       - name: Prepare Codex change PR
+        if: success()
         id: prepare
         shell: bash
         env:
