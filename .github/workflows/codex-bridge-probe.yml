@@ -1,0 +1,63 @@
+name: Codex Bridge Probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/codex-bridge-probe.yml"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check whether OPENAI_API_KEY is configured
+        id: keycheck
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -n "$OPENAI_API_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "OPENAI_API_KEY is configured."
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "OPENAI_API_KEY is not configured."
+          fi
+
+      - name: Checkout repository
+        if: steps.keycheck.outputs.present == 'true'
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Run Codex read-only connectivity probe
+        if: steps.keycheck.outputs.present == 'true'
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          permission-profile: ":read-only"
+          prompt: |
+            Connectivity probe only. Do not modify files. Read the repository name and return exactly:
+            CODEX_BRIDGE_OK KIYUSAMA666/KIYUSAMA
+
+      - name: Report probe result
+        shell: bash
+        env:
+          KEY_PRESENT: ${{ steps.keycheck.outputs.present }}
+          CODEX_RESULT: ${{ steps.codex.outputs.final-message }}
+        run: |
+          if [ "$KEY_PRESENT" != "true" ]; then
+            echo "CODEX_BRIDGE_STATUS=BLOCKED_MISSING_OPENAI_API_KEY"
+            exit 0
+          fi
+
+          echo "Codex output: $CODEX_RESULT"
+          if [ "$CODEX_RESULT" = "CODEX_BRIDGE_OK KIYUSAMA666/KIYUSAMA" ]; then
+            echo "CODEX_BRIDGE_STATUS=OK"
+          else
+            echo "CODEX_BRIDGE_STATUS=UNEXPECTED_RESPONSE"
+            exit 1
+          fi
