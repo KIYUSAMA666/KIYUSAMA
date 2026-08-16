@@ -1,0 +1,70 @@
+name: Codex OIDC Bridge
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/codex-bridge-oidc.yml'
+      - '.codex/trigger/**'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex@0.144.5
+
+      - name: Mint GitHub OIDC token
+        shell: bash
+        run: |
+          set -euo pipefail
+          OIDC_JSON="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=kiyusama-codex-bridge")"
+          OIDC_TOKEN="$(printf '%s' "$OIDC_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "KIYUSAMA_GH_OIDC_TOKEN=$OIDC_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Configure secretless Codex provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.codex"
+          cat > "$HOME/.codex/config.toml" <<'EOF'
+          model_provider = "kiyusama-proxy"
+          approval_policy = "never"
+          sandbox_mode = "read-only"
+
+          [model_providers.kiyusama-proxy]
+          name = "KIYUSAMA OIDC Responses Proxy"
+          base_url = "https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-openai-proxy-v1/v1"
+          env_key = "KIYUSAMA_GH_OIDC_TOKEN"
+          wire_api = "responses"
+          requires_openai_auth = false
+          request_max_retries = 1
+          EOF
+
+      - name: Run Codex connectivity probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          codex exec \
+            --skip-git-repo-check \
+            --sandbox read-only \
+            --output-last-message /tmp/codex-final.txt \
+            'Return exactly this text and nothing else: CODEX_OIDC_BRIDGE_OK'
+          RESULT="$(tr -d '\r\n' < /tmp/codex-final.txt)"
+          echo "Codex result: $RESULT"
+          test "$RESULT" = "CODEX_OIDC_BRIDGE_OK"
+          echo "CODEX_BRIDGE_STATUS=OK"
