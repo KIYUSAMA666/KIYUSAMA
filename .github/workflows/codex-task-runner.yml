@@ -123,9 +123,9 @@ jobs:
           git restore --source=HEAD -- .github .codex || true
           rm -f .codex/RUNTIME_PROMPT.md
 
-      - name: Prepare Codex change PR
+      - name: Publish Codex change branch
         if: success()
-        id: prepare
+        id: publish
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -144,8 +144,7 @@ jobs:
           git commit -m "Codex autonomous task ${GITHUB_RUN_ID}"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --set-upstream origin "$BRANCH"
-          PR_URL="$(gh pr create --base main --head "$BRANCH" --title "Codex autonomous task ${GITHUB_RUN_ID}" --body "Created automatically by the KIYUSAMA OS Codex OIDC task runner. No OpenAI API key is stored in GitHub. Review before merging.")"
           echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-          echo "CODEX_TASK_STATUS=PR_CREATED"
-          echo "CODEX_TASK_PR=$PR_URL"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "CODEX_TASK_STATUS=BRANCH_PUBLISHED"
+          echo "CODEX_TASK_BRANCH=$BRANCH"
