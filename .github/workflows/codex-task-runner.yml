@@ -22,6 +22,22 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex@0.144.5
+
+      - name: Enable Linux sandbox prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_userns="$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || true)"
+          if [ -n "$current_userns" ] && [ "$current_userns" != "1" ]; then
+            sudo sysctl -w kernel.unprivileged_userns_clone=1
+          fi
+          current_apparmor="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || true)"
+          if [ -n "$current_apparmor" ] && [ "$current_apparmor" != "0" ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
       - name: Mint GitHub OIDC token
         shell: bash
         run: |
@@ -32,6 +48,25 @@ jobs:
           OIDC_TOKEN="$(printf '%s' "$OIDC_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
           echo "::add-mask::$OIDC_TOKEN"
           echo "KIYUSAMA_GH_OIDC_TOKEN=$OIDC_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Configure secretless Codex provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.codex"
+          cat > "$HOME/.codex/config.toml" <<'EOF'
+          model_provider = "kiyusama-proxy"
+          approval_policy = "never"
+          sandbox_mode = "workspace-write"
+
+          [model_providers.kiyusama-proxy]
+          name = "KIYUSAMA OIDC Responses Proxy"
+          base_url = "https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-openai-proxy-v1/v1"
+          env_key = "KIYUSAMA_GH_OIDC_TOKEN"
+          wire_api = "responses"
+          requires_openai_auth = false
+          request_max_retries = 1
+          EOF
 
       - name: Build guarded Codex prompt
         shell: bash
@@ -55,22 +90,26 @@ jobs:
           EOF
 
       - name: Run Codex task
-        id: run_codex
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: ${{ env.KIYUSAMA_GH_OIDC_TOKEN }}
-          responses-api-endpoint: https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-openai-proxy-v1/v1/responses
-          permission-profile: ':workspace'
-          safety-strategy: drop-sudo
-          prompt-file: .codex/RUNTIME_PROMPT.md
+        shell: bash
+        run: |
+          set -euo pipefail
+          codex exec \
+            --skip-git-repo-check \
+            --sandbox workspace-write \
+            --output-last-message /tmp/codex-task-result.txt \
+            - < .codex/RUNTIME_PROMPT.md
+          echo '--- CODEX FINAL MESSAGE ---'
+          cat /tmp/codex-task-result.txt
 
       - name: Enforce protected paths
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
           git restore --source=HEAD -- .github .codex || true
 
       - name: Prepare Codex change PR
+        if: success()
         id: prepare
         shell: bash
         env:
