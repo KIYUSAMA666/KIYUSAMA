@@ -22,9 +22,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Codex CLI
-        run: npm install -g @openai/codex@0.144.5
-
       - name: Mint GitHub OIDC token
         shell: bash
         run: |
@@ -36,38 +33,36 @@ jobs:
           echo "::add-mask::$OIDC_TOKEN"
           echo "KIYUSAMA_GH_OIDC_TOKEN=$OIDC_TOKEN" >> "$GITHUB_ENV"
 
-      - name: Configure Codex provider
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.codex"
-          cat > "$HOME/.codex/config.toml" <<'EOF'
-          model_provider = "kiyusama-proxy"
-          approval_policy = "never"
-          sandbox_mode = "workspace-write"
-
-          [model_providers.kiyusama-proxy]
-          name = "KIYUSAMA OIDC Responses Proxy"
-          base_url = "https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-openai-proxy-v1/v1"
-          env_key = "KIYUSAMA_GH_OIDC_TOKEN"
-          wire_api = "responses"
-          requires_openai_auth = false
-          request_max_retries = 1
-          EOF
-
-      - name: Run Codex task
+      - name: Build guarded Codex prompt
         shell: bash
         run: |
           set -euo pipefail
           test -f .codex/tasks/NEXT_TASK.md
-          TASK="$(cat .codex/tasks/NEXT_TASK.md)"
-          codex exec \
-            --skip-git-repo-check \
-            --sandbox workspace-write \
-            --output-last-message /tmp/codex-task-result.txt \
-            "You are the implementation agent for KIYUSAMA OS. Execute only the task below inside this repository. Do not modify .github/ or .codex/. Do not expose credentials or environment variables. Make the smallest safe change that satisfies the task. TASK:\n\n${TASK}"
-          echo '--- CODEX FINAL MESSAGE ---'
-          cat /tmp/codex-task-result.txt
+          cat > .codex/RUNTIME_PROMPT.md <<'EOF'
+          You are the implementation agent for KIYUSAMA OS.
+          Execute only the task below inside this repository.
+          Do not modify .github/ or .codex/.
+          Do not expose credentials, tokens, environment variables, or secrets.
+          Do not change repository security controls.
+          Make the smallest safe change that satisfies the task.
+
+          --- TASK START ---
+          EOF
+          cat .codex/tasks/NEXT_TASK.md >> .codex/RUNTIME_PROMPT.md
+          cat >> .codex/RUNTIME_PROMPT.md <<'EOF'
+
+          --- TASK END ---
+          EOF
+
+      - name: Run Codex task
+        id: run_codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ env.KIYUSAMA_GH_OIDC_TOKEN }}
+          responses-api-endpoint: https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-openai-proxy-v1/v1/responses
+          permission-profile: ':workspace'
+          safety-strategy: drop-sudo
+          prompt-file: .codex/RUNTIME_PROMPT.md
 
       - name: Enforce protected paths
         shell: bash
@@ -95,7 +90,7 @@ jobs:
           git commit -m "Codex autonomous task ${GITHUB_RUN_ID}"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --set-upstream origin "$BRANCH"
-          PR_URL="$(gh pr create --base main --head "$BRANCH" --title "Codex autonomous task ${GITHUB_RUN_ID}" --body "Created automatically by the KIYUSAMA OS Codex OIDC task runner. No OpenAI API key was stored in GitHub. Review before merging.")"
+          PR_URL="$(gh pr create --base main --head "$BRANCH" --title "Codex autonomous task ${GITHUB_RUN_ID}" --body "Created automatically by the KIYUSAMA OS Codex OIDC task runner. No OpenAI API key is stored in GitHub. Review before merging.")"
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
           echo "CODEX_TASK_STATUS=PR_CREATED"
