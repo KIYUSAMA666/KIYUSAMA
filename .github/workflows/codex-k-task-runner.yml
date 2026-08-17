@@ -1,0 +1,182 @@
+name: Codex-K Task Runner
+
+on:
+  schedule:
+    - cron: '2-57/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/codex-k-task-runner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: codex-k-common-memory-runner
+  cancel-in-progress: false
+
+jobs:
+  run-task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Mint GitHub OIDC token
+        shell: bash
+        run: |
+          set -euo pipefail
+          OIDC_JSON="$(curl --fail --silent --show-error -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=kiyusama-codex-bridge")"
+          OIDC_TOKEN="$(printf '%s' "$OIDC_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "KIYUSAMA_GH_OIDC_TOKEN=$OIDC_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Claim KIRA-lane task from COMMON MEMORY
+        id: claim
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLAIM_JSON="$(curl --fail --silent --show-error -X POST -H "Authorization: Bearer ${KIYUSAMA_GH_OIDC_TOKEN}" -H "Content-Type: application/json" https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-task-bridge-v1/k-claim)"
+          printf '%s' "$CLAIM_JSON" > /tmp/codex-k-claim.json
+          TASK_ID="$(python3 -c 'import json; d=json.load(open("/tmp/codex-k-claim.json")); t=d.get("task"); print("" if not t else t["knowledge_entry_id"])')"
+          if [ -z "$TASK_ID" ]; then
+            echo "has_task=false" >> "$GITHUB_OUTPUT"
+            echo "CODEX_K_TASK_STATUS=NO_COMMON_MEMORY_TASK"
+            exit 0
+          fi
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/codex-k-claim.json'))['task']
+          open('/tmp/common-memory-k-task.txt','w',encoding='utf-8').write(d['content'])
+          PY
+          echo "has_task=true" >> "$GITHUB_OUTPUT"
+          echo "COMMON_MEMORY_TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
+
+      - name: Install Codex CLI
+        if: steps.claim.outputs.has_task == 'true'
+        run: npm install -g @openai/codex@0.144.5
+
+      - name: Enable Linux sandbox prerequisites
+        if: steps.claim.outputs.has_task == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_userns="$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || true)"
+          if [ -n "$current_userns" ] && [ "$current_userns" != "1" ]; then sudo sysctl -w kernel.unprivileged_userns_clone=1; fi
+          current_apparmor="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || true)"
+          if [ -n "$current_apparmor" ] && [ "$current_apparmor" != "0" ]; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; fi
+
+      - name: Exchange OIDC for compact bridge token
+        if: steps.claim.outputs.has_task == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN_JSON="$(curl --fail --silent --show-error -X POST -H "Authorization: Bearer ${KIYUSAMA_GH_OIDC_TOKEN}" -H "Content-Type: application/json" https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-openai-proxy-v1/token)"
+          BRIDGE_TOKEN="$(printf '%s' "$TOKEN_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+          test "${#BRIDGE_TOKEN}" -lt 1024
+          echo "::add-mask::$BRIDGE_TOKEN"
+          echo "KIYUSAMA_BRIDGE_TOKEN=$BRIDGE_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Configure secretless Codex provider
+        if: steps.claim.outputs.has_task == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.codex"
+          cat > "$HOME/.codex/config.toml" <<'EOF'
+          model_provider = "kiyusama-proxy"
+          approval_policy = "never"
+          sandbox_mode = "workspace-write"
+          [model_providers.kiyusama-proxy]
+          name = "KIYUSAMA OIDC Responses Proxy"
+          base_url = "https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-openai-proxy-v1/v1"
+          env_key = "KIYUSAMA_BRIDGE_TOKEN"
+          wire_api = "responses"
+          requires_openai_auth = false
+          request_max_retries = 1
+          EOF
+
+      - name: Build guarded Codex-K prompt
+        if: steps.claim.outputs.has_task == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/codex-k-runtime-prompt.md <<'EOF'
+          You are CODEX-K, the implementation machine for the KIRA audit lane of KIYUSAMA OS.
+          Execute only the COMMON MEMORY task below inside this repository.
+          Keep this lane independent from CODEX-S.
+          Do not modify .github/ or .codex/.
+          Do not expose credentials, tokens, environment variables, or secrets.
+          Do not change repository security controls.
+          Make the smallest safe change that satisfies the task.
+          --- COMMON MEMORY TASK START ---
+          EOF
+          cat /tmp/common-memory-k-task.txt >> /tmp/codex-k-runtime-prompt.md
+          echo '
+--- COMMON MEMORY TASK END ---' >> /tmp/codex-k-runtime-prompt.md
+
+      - name: Run Codex-K task
+        if: steps.claim.outputs.has_task == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          codex exec --skip-git-repo-check --sandbox workspace-write --output-last-message /tmp/codex-k-task-result.txt - < /tmp/codex-k-runtime-prompt.md
+          cat /tmp/codex-k-task-result.txt
+
+      - name: Enforce protected paths
+        if: steps.claim.outputs.has_task == 'true'
+        shell: bash
+        run: git restore --source=HEAD -- .github .codex || true
+
+      - name: Prepare Codex-K branch for KIRA/SORA gate
+        if: steps.claim.outputs.has_task == 'true'
+        id: prepare
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "no_changes=true" >> "$GITHUB_OUTPUT"
+            echo "CODEX_K_TASK_STATUS=NO_CHANGES"
+            exit 0
+          fi
+          echo "no_changes=false" >> "$GITHUB_OUTPUT"
+          BRANCH="codex-k/auto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git config user.name "KIYUSAMA Codex-K Runner"
+          git config user.email "codex-k-runner@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "Codex-K COMMON MEMORY task ${COMMON_MEMORY_TASK_ID} run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --set-upstream origin "$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Record no-change completion in COMMON MEMORY
+        if: steps.claim.outputs.has_task == 'true' && steps.prepare.outputs.no_changes == 'true'
+        shell: bash
+        run: |
+          python3 - <<'PY' > /tmp/k-no-change.json
+          import json,os
+          summary=open('/tmp/codex-k-task-result.txt',encoding='utf-8').read().replace('\n',' ')[:1000]
+          print(json.dumps({'knowledge_entry_id':int(os.environ['COMMON_MEMORY_TASK_ID']),'github_run_id':int(os.environ['GITHUB_RUN_ID']),'result_summary':summary}))
+          PY
+          curl --fail --silent --show-error -X POST -H "Authorization: Bearer ${KIYUSAMA_GH_OIDC_TOKEN}" -H "Content-Type: application/json" --data-binary @/tmp/k-no-change.json https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-task-bridge-v1/k-no-change
+
+      - name: Record branch-ready in COMMON MEMORY
+        if: steps.claim.outputs.has_task == 'true' && steps.prepare.outputs.branch != ''
+        shell: bash
+        env:
+          BRANCH: ${{ steps.prepare.outputs.branch }}
+        run: |
+          python3 - <<'PY' > /tmp/k-branch-ready.json
+          import json,os
+          summary=open('/tmp/codex-k-task-result.txt',encoding='utf-8').read().replace('\n',' ')[:1000]
+          print(json.dumps({'knowledge_entry_id':int(os.environ['COMMON_MEMORY_TASK_ID']),'github_run_id':int(os.environ['GITHUB_RUN_ID']),'github_branch':os.environ['BRANCH'],'result_summary':summary}))
+          PY
+          curl --fail --silent --show-error -X POST -H "Authorization: Bearer ${KIYUSAMA_GH_OIDC_TOKEN}" -H "Content-Type: application/json" --data-binary @/tmp/k-branch-ready.json https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-task-bridge-v1/k-branch-ready
