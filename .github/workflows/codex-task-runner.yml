@@ -167,9 +167,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "no_changes=true" >> "$GITHUB_OUTPUT"
             echo "CODEX_TASK_STATUS=NO_CHANGES"
-            exit 1
+            exit 0
           fi
+          echo "no_changes=false" >> "$GITHUB_OUTPUT"
           BRANCH="codex/auto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git config user.name "KIYUSAMA Codex Runner"
           git config user.email "codex-runner@users.noreply.github.com"
@@ -181,6 +183,27 @@ jobs:
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           echo "CODEX_TASK_STATUS=BRANCH_READY_FOR_SORA"
           echo "CODEX_TASK_BRANCH=$BRANCH"
+
+      - name: Record no-change completion in COMMON MEMORY
+        if: steps.claim.outputs.has_task == 'true' && steps.prepare.outputs.no_changes == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/no-change.json
+          import json, os
+          summary=open('/tmp/codex-task-result.txt',encoding='utf-8').read().replace('\n',' ')[:1000]
+          print(json.dumps({
+            'knowledge_entry_id': int(os.environ['COMMON_MEMORY_TASK_ID']),
+            'github_run_id': int(os.environ['GITHUB_RUN_ID']),
+            'result_summary': summary
+          }))
+          PY
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${KIYUSAMA_GH_OIDC_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/no-change.json \
+            https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-task-bridge-v1/no-change
 
       - name: Record branch-ready in COMMON MEMORY
         if: steps.claim.outputs.has_task == 'true' && steps.prepare.outputs.branch != ''
