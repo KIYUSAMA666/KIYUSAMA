@@ -170,12 +170,12 @@ jobs:
             echo "CODEX_TASK_STATUS=NO_CHANGES"
             exit 1
           fi
-          BRANCH="codex/auto-${GITHUB_RUN_ID}"
+          BRANCH="codex/auto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git config user.name "KIYUSAMA Codex Runner"
           git config user.email "codex-runner@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add -A
-          git commit -m "Codex COMMON MEMORY task ${COMMON_MEMORY_TASK_ID} run ${GITHUB_RUN_ID}"
+          git commit -m "Codex COMMON MEMORY task ${COMMON_MEMORY_TASK_ID} run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --set-upstream origin "$BRANCH"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
