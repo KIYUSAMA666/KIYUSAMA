@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+wake-runner.sqlite3*
+gatekeeper-mcp.json
+claude-home/
