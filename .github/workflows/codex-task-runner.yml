@@ -192,14 +192,9 @@ jobs:
           python3 - <<'PY' > /tmp/no-change.json
           import json, os
           summary=open('/tmp/codex-task-result.txt',encoding='utf-8').read().replace('\n',' ')[:1000]
-          print(json.dumps({
-            'knowledge_entry_id': int(os.environ['COMMON_MEMORY_TASK_ID']),
-            'github_run_id': int(os.environ['GITHUB_RUN_ID']),
-            'result_summary': summary
-          }))
+          print(json.dumps({'knowledge_entry_id':int(os.environ['COMMON_MEMORY_TASK_ID']),'github_run_id':int(os.environ['GITHUB_RUN_ID']),'result_summary':summary}))
           PY
-          curl --fail --silent --show-error \
-            -X POST \
+          curl --fail --silent --show-error -X POST \
             -H "Authorization: Bearer ${KIYUSAMA_GH_OIDC_TOKEN}" \
             -H "Content-Type: application/json" \
             --data-binary @/tmp/no-change.json \
@@ -215,16 +210,25 @@ jobs:
           python3 - <<'PY' > /tmp/branch-ready.json
           import json, os
           summary=open('/tmp/codex-task-result.txt',encoding='utf-8').read().replace('\n',' ')[:1000]
-          print(json.dumps({
-            'knowledge_entry_id': int(os.environ['COMMON_MEMORY_TASK_ID']),
-            'github_run_id': int(os.environ['GITHUB_RUN_ID']),
-            'github_branch': os.environ['BRANCH'],
-            'result_summary': summary
-          }))
+          print(json.dumps({'knowledge_entry_id':int(os.environ['COMMON_MEMORY_TASK_ID']),'github_run_id':int(os.environ['GITHUB_RUN_ID']),'github_branch':os.environ['BRANCH'],'result_summary':summary}))
           PY
-          curl --fail --silent --show-error \
-            -X POST \
+          curl --fail --silent --show-error -X POST \
             -H "Authorization: Bearer ${KIYUSAMA_GH_OIDC_TOKEN}" \
             -H "Content-Type: application/json" \
             --data-binary @/tmp/branch-ready.json \
             https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-task-bridge-v1/branch-ready
+
+      - name: Record failure in COMMON MEMORY
+        if: failure() && steps.claim.outputs.has_task == 'true'
+        shell: bash
+        run: |
+          set +e
+          python3 - <<'PY' > /tmp/failed.json
+          import json, os
+          print(json.dumps({'knowledge_entry_id':int(os.environ['COMMON_MEMORY_TASK_ID']),'github_run_id':int(os.environ['GITHUB_RUN_ID']),'result_summary':'CODEX_S_RUN_FAILED_AFTER_CLAIM'}))
+          PY
+          curl --silent --show-error -X POST \
+            -H "Authorization: Bearer ${KIYUSAMA_GH_OIDC_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/failed.json \
+            https://zdypjilutgxjsneultqj.supabase.co/functions/v1/codex-task-bridge-v1/failed || true
