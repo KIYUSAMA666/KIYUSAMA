@@ -1,9 +1,9 @@
-Create a new file at the repository root named CODEX_SORA_HANDOFF_TEST_2026-08-17.md. Its complete content must be exactly:
+# NEXT TASK
 
-# CODEX SORA HANDOFF TEST — 2026-08-17
+STATUS: NO_STATIC_TASK
 
-Codex creates -> branch push -> SORA GitHub integration creates PR -> merge
+The previous SORA handoff test was completed on 2026-08-17 and must not be replayed.
 
-STATUS: HANDOFF_TEST
+Production Codex work is sourced from COMMON MEMORY (Supabase project `zdypjilutgxjsneultqj`, schema `common_memory`) through the controlled CODEX-S / CODEX-K runners.
 
-Do not modify any other file.
+Do not create implementation work from this file unless KIYUSAMA or SORA explicitly replaces this placeholder with a current approved task.
