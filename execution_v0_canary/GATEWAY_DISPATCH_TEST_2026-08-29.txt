@@ -1,4 +1,0 @@
-KIYUSAMA OS execution_v0 gateway dispatch test.
-Run: 206133dc-044b-47b7-bb9b-15b62426db96
-Mode: DIRECT_REVERSIBLE
-Do not merge to main.
