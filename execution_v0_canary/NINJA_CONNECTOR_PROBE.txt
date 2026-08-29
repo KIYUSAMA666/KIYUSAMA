@@ -1,0 +1,3 @@
+KIYUSAMA OS NINJA CONNECTOR PROBE
+Purpose: prove authenticated GitHub connector write/read/delete capability without exposing credentials.
+Date: 2026-08-29 JST
