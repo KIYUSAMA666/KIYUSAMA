@@ -1,4 +1,0 @@
-KIYUSAMA OS execution_v0 reversible external-service canary.
-Purpose: verify GitHub write -> read back -> compensation/delete.
-No production logic.
-Date: 2026-08-29 JST.
