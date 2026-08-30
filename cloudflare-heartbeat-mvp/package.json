@@ -8,12 +8,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "agents": "^0.3.0"
+    "agents": "0.22.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260820.0",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4",
+    "vitest": "^4.1.0",
     "wrangler": "^4.32.0"
   }
 }
