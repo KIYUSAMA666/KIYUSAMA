@@ -1,0 +1,71 @@
+name: TONTON GitHub Native Proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sora/tonton-fetcher-20260831]
+    paths:
+      - '.codex/trigger/tonton-*.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tonton-github-native-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  receive-validate-ack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Locate TONTON knock
+        id: locate
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="$(find .codex/trigger -maxdepth 1 -type f -name 'tonton-*.json' -print | sort | tail -n 1 || true)"
+          if [ -z "$FILE" ]; then
+            echo "No TONTON knock artifact found" >&2
+            exit 1
+          fi
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate lightweight TONTON envelope
+        id: validate
+        shell: bash
+        env:
+          FILE: ${{ steps.locate.outputs.file }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, re
+          p = pathlib.Path(os.environ['FILE'])
+          data = json.loads(p.read_text(encoding='utf-8'))
+          required = ['type', 'signalId', 'source']
+          for key in required:
+              if not isinstance(data.get(key), str) or not data[key].strip():
+                  raise SystemExit(f'invalid or missing {key}')
+          if data['type'] != 'TONTON_SIGNAL':
+              raise SystemExit('type must be TONTON_SIGNAL')
+          if not re.fullmatch(r'[A-Za-z0-9._:-]{1,160}', data['signalId']):
+              raise SystemExit('unsafe signalId')
+          allowed = {'type','signalId','source','dedupeKey','occurredAt','hint'}
+          extra = set(data) - allowed
+          if extra:
+              raise SystemExit(f'unexpected fields: {sorted(extra)}')
+          print(f"TONTON_SIGNAL_VALID signalId={data['signalId']} source={data['source']}")
+          PY
+
+      - name: ACK inside GitHub only
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "TONTON_GITHUB_NATIVE_ACK=OK"
+          echo "NO_EXTERNAL_BACKEND_CALLED=true"
+          echo "NO_NETWORK_STEP_PRESENT=true"
