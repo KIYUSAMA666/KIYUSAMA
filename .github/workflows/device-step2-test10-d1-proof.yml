@@ -1,0 +1,40 @@
+name: DEVICE Step2 TEST10 D1 Runtime Proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - sora/test10-d1-runtime-proof-20260831
+    paths:
+      - 'kiyusama-device/tests/step2/d1-runtime-proof.mjs'
+      - '.github/workflows/device-step2-test10-d1-proof.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test10-d1-runtime-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact proof branch
+        uses: actions/checkout@v4
+
+      - name: Runtime versions
+        run: |
+          set -euxo pipefail
+          node --version
+          npm --version
+
+      - name: Install official Cloudflare local runtime
+        working-directory: kiyusama-device
+        run: |
+          set -euxo pipefail
+          npm install --no-save --no-package-lock miniflare@latest
+          npm ls miniflare workerd || true
+
+      - name: TEST 10 — D1 UNIQUE runtime proof
+        working-directory: kiyusama-device
+        run: |
+          set -euxo pipefail
+          node tests/step2/d1-runtime-proof.mjs
