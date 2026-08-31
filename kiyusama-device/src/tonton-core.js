@@ -12,12 +12,16 @@ export class TontonError extends Error {
  *
  * TONTON does not trust or depend on any specific provider. A transport
  * (mail, webhook, queue, local process, etc.) only supplies a lightweight
- * signal. The core resolves durable payload, hands it off, and commits the
- * cursor/ack only after acceptance.
+ * signal. The core first acquires a dedupe claim, then resolves durable
+ * payload, hands it off, and commits the cursor/ack only after acceptance.
  *
- * Invariant: resolve -> handoff -> commit
+ * Invariant: claim -> resolve -> handoff -> commit
+ *
+ * claimSignal MUST be atomic in its durable implementation. Returning false
+ * means another execution already owns or completed this signal.
  */
 export async function processTontonSignal(signal, {
+  claimSignal,
   resolvePayload,
   handoff,
   commit,
@@ -28,6 +32,9 @@ export async function processTontonSignal(signal, {
   if (!signal.id) {
     throw new TontonError('TONTON_INVALID_SIGNAL', 'signal.id is required');
   }
+  if (typeof claimSignal !== 'function') {
+    throw new TontonError('TONTON_CONFIG_ERROR', 'claimSignal is required');
+  }
   if (typeof resolvePayload !== 'function') {
     throw new TontonError('TONTON_CONFIG_ERROR', 'resolvePayload is required');
   }
@@ -36,6 +43,16 @@ export async function processTontonSignal(signal, {
   }
   if (typeof commit !== 'function') {
     throw new TontonError('TONTON_CONFIG_ERROR', 'commit is required');
+  }
+
+  const claim = await claimSignal(signal);
+  if (claim === false || claim?.claimed === false) {
+    return {
+      ok: true,
+      duplicate: true,
+      signalId: String(signal.id),
+      nextCursor: null,
+    };
   }
 
   const resolved = await resolvePayload(signal);
@@ -51,6 +68,7 @@ export async function processTontonSignal(signal, {
     payload: resolved.payload,
     evidence: resolved.evidence ?? null,
     nextCursor: resolved.nextCursor ?? null,
+    claim,
   });
 
   if (accepted === false || accepted?.accepted === false) {
@@ -61,11 +79,13 @@ export async function processTontonSignal(signal, {
     signal,
     nextCursor: resolved.nextCursor ?? null,
     evidence: resolved.evidence ?? null,
+    claim,
     handoffResult: accepted,
   });
 
   return {
     ok: true,
+    duplicate: false,
     signalId: String(signal.id),
     nextCursor: resolved.nextCursor ?? null,
   };
