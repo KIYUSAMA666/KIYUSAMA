@@ -101,3 +101,19 @@ jobs:
           set -euo pipefail
           node --test tests/tonton/tonton-codex-executor-contract.test.mjs
           echo "TONTON_CODEX_EXECUTOR_CONTRACT=PASS"
+
+      - name: Probe Codex CLI availability without install or provider
+        id: codex_probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v codex >/dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "CODEX_CLI_AVAILABLE=true"
+            codex --version
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "CODEX_CLI_AVAILABLE=false"
+          fi
+          echo "CODEX_CLI_INSTALL_ATTEMPTED=false"
+          echo "CODEX_PROVIDER_CALL_ATTEMPTED=false"
