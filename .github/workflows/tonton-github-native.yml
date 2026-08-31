@@ -1,0 +1,114 @@
+name: TONTON GitHub Native Proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sora/tonton-fetcher-20260831]
+    paths:
+      - '.codex/trigger/tonton-*.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tonton-github-native-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  receive-validate-ack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Locate TONTON knock
+        id: locate
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="$(find .codex/trigger -maxdepth 1 -type f -name 'tonton-*.json' -print | sort | tail -n 1 || true)"
+          if [ -z "$FILE" ]; then
+            echo "No TONTON knock artifact found" >&2
+            exit 1
+          fi
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate lightweight TONTON envelope
+        shell: bash
+        env:
+          FILE: ${{ steps.locate.outputs.file }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, re
+          data = json.loads(pathlib.Path(os.environ['FILE']).read_text(encoding='utf-8'))
+          for key in ['type','signalId','source']:
+              if not isinstance(data.get(key), str) or not data[key].strip(): raise SystemExit(f'invalid or missing {key}')
+          if data['type'] != 'TONTON_SIGNAL': raise SystemExit('type must be TONTON_SIGNAL')
+          if not re.fullmatch(r'[A-Za-z0-9._:-]{1,160}', data['signalId']): raise SystemExit('unsafe signalId')
+          allowed={'type','signalId','source','dedupeKey','occurredAt','hint'}
+          if set(data)-allowed: raise SystemExit('unexpected fields')
+          print(f"TONTON_SIGNAL_VALID signalId={data['signalId']} source={data['source']}")
+          PY
+
+      - name: ACK inside GitHub only
+        run: |
+          echo "TONTON_GITHUB_NATIVE_ACK=OK"
+          echo "NO_EXTERNAL_BACKEND_CALLED=true"
+
+      - name: Verify backend-free OS runner contract
+        working-directory: kiyusama-device
+        run: node --test tests/tonton/tonton-os-runner-contract.test.mjs
+
+      - name: Verify existing runner seam without backend
+        working-directory: kiyusama-device
+        run: node --test tests/tonton/tonton-existing-runner-seam.test.mjs
+
+      - name: Verify replaceable existing runner adapter without backend
+        working-directory: kiyusama-device
+        run: node --test tests/tonton/tonton-existing-runner-adapter.test.mjs
+
+      - name: Verify isolated Codex executor contract without provider
+        working-directory: kiyusama-device
+        run: node --test tests/tonton/tonton-codex-executor-contract.test.mjs
+
+      - name: Open CLI supply gate with pinned Codex package only
+        run: |
+          set -euo pipefail
+          npm install -g @openai/codex@0.144.5
+          codex --version
+
+      - name: Validate OpenAI credential with minimal non-generation request
+        id: auth_validate
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${OPENAI_API_KEY:-}" || { echo "OPENAI_AUTH_VALID=false"; exit 1; }
+          CODE="$(curl -sS -o /tmp/openai-models.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${OPENAI_API_KEY}" \
+            https://api.openai.com/v1/models)"
+          if [ "$CODE" = "200" ]; then
+            echo "OPENAI_AUTH_VALID=true"
+            echo "OPENAI_AUTH_HTTP_STATUS=200"
+            echo "OPENAI_SECRET_VALUE_EXPOSED=false"
+          else
+            echo "OPENAI_AUTH_VALID=false"
+            echo "OPENAI_AUTH_HTTP_STATUS=$CODE"
+            python3 - <<'PY'
+          import json
+          try:
+              d=json.load(open('/tmp/openai-models.json'))
+              e=d.get('error',{})
+              print('OPENAI_AUTH_ERROR_TYPE='+str(e.get('type','unknown')))
+              print('OPENAI_AUTH_ERROR_CODE='+str(e.get('code','unknown')))
+          except Exception:
+              print('OPENAI_AUTH_ERROR_TYPE=unparsed')
+          PY
+            exit 1
+          fi
+          echo "CODEX_MODEL_EXECUTION_ATTEMPTED=false"

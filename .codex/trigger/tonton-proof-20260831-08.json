@@ -1,0 +1,8 @@
+{
+  "type": "TONTON_SIGNAL",
+  "signalId": "proof-20260831-08",
+  "source": "github-native-proof",
+  "dedupeKey": "tonton-proof-20260831-08",
+  "occurredAt": "2026-08-31T07:52:00Z",
+  "hint": "auth-material-presence-only"
+}

@@ -1,0 +1,8 @@
+{
+  "type": "TONTON_SIGNAL",
+  "signalId": "tonton-proof-20260831-04",
+  "source": "github-native-proof",
+  "dedupeKey": "tonton-proof-20260831-04",
+  "occurredAt": "2026-08-31T07:08:00Z",
+  "hint": "verify replaceable existing runner adapter without backend"
+}

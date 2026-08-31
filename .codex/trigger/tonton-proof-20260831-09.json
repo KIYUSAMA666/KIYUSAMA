@@ -1,0 +1,8 @@
+{
+  "type": "TONTON_SIGNAL",
+  "signalId": "proof-20260831-09",
+  "source": "github-native-proof",
+  "dedupeKey": "proof-20260831-09",
+  "occurredAt": "2026-08-31T17:00:00+09:00",
+  "hint": "verify OPENAI_API_KEY presence only; do not authenticate or execute model"
+}
