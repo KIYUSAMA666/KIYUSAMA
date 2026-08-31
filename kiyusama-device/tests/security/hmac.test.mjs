@@ -11,12 +11,31 @@ const secret = 'step3-test-secret';
 const timestamp = '1760000000';
 const rawBody = '{"delivery_event_id":"delivery-123","message":"hello"}';
 
-test('S3-01 — valid request accepted', async () => {
+async function manualHmacHex(secretValue, message) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(secretValue), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
+  return Array.from(new Uint8Array(signature), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+test('S3-01 — valid request accepted and exact timestamp-dot-rawBody message proven', async () => {
   const signature = await signRequest(secret, timestamp, rawBody);
+  const expectedDot = await manualHmacHex(secret, `${timestamp}.${rawBody}`);
+  const wrongColon = await manualHmacHex(secret, `${timestamp}:${rawBody}`);
   const verified = await verifySignature(secret, timestamp, rawBody, signature);
-  console.log('S3_01_EVIDENCE', JSON.stringify({ verified, signatureLength: signature.length }));
+  const evidence = {
+    verified,
+    signatureLength: signature.length,
+    equalsManualTimestampDotRawBody: signature === expectedDot,
+    differsFromTimestampColonRawBody: signature !== wrongColon,
+  };
+  console.log('S3_01_EVIDENCE', JSON.stringify(evidence));
   assert.equal(verified, true);
   assert.equal(signature.length, 64);
+  assert.equal(evidence.equalsManualTimestampDotRawBody, true);
+  assert.equal(evidence.differsFromTimestampColonRawBody, true);
 });
 
 test('S3-02 — wrong secret and one-byte signature tamper rejected', async () => {
@@ -39,7 +58,7 @@ test('S3-03 — raw body one-character tamper rejected', async () => {
   assert.equal(verified, false);
 });
 
-test('S3-04 — timestamp boundary ±300 accepted and ±301 rejected', () => {
+test('S3-04 — timestamp boundary and malformed timestamp inputs', () => {
   const now = 2_000_000_000;
   const observations = {
     minus300: verifyTimestamp(String(now - 300), now),
@@ -48,6 +67,9 @@ test('S3-04 — timestamp boundary ±300 accepted and ±301 rejected', () => {
     plus301: verifyTimestamp(String(now + 301), now),
     milliseconds: verifyTimestamp(String(now * 1000), now),
     fractional: verifyTimestamp(`${now}.5`, now),
+    empty: verifyTimestamp('', now),
+    nonnumeric: verifyTimestamp('not-a-number', now),
+    nanLike: verifyTimestamp('NaN', now),
   };
   console.log('S3_04_EVIDENCE', JSON.stringify({ now, observations }));
   assert.equal(observations.minus300, true);
@@ -56,6 +78,9 @@ test('S3-04 — timestamp boundary ±300 accepted and ±301 rejected', () => {
   assert.equal(observations.plus301, false);
   assert.equal(observations.milliseconds, false);
   assert.equal(observations.fractional, false);
+  assert.equal(observations.empty, false);
+  assert.equal(observations.nonnumeric, false);
+  assert.equal(observations.nanLike, false);
 });
 
 test('S3-05 — delivery_event_id binding requires exact match', () => {
@@ -82,6 +107,7 @@ test('S3-06 — malformed signatures fail closed without exception', async () =>
     nonHex: 'zz',
     empty: '',
     nullChar: `aa\u0000bb`,
+    validHexWrongByteLength: '00',
   };
   const results = {};
   for (const [name, value] of Object.entries(malformed)) {
@@ -92,7 +118,7 @@ test('S3-06 — malformed signatures fail closed without exception', async () =>
     } catch {
       threw = true;
     }
-    results[name] = { verified, threw };
+    results[name] = { verified, threw, hexLength: value.length };
   }
   console.log('S3_06_EVIDENCE', JSON.stringify(results));
   for (const result of Object.values(results)) {
