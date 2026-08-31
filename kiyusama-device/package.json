@@ -1,0 +1,11 @@
+{
+  "name": "kiyusama-device",
+  "private": true,
+  "version": "0.1.6",
+  "type": "module",
+  "scripts": {
+    "build:contracts": "tsc -p tsconfig.contracts.json",
+    "test:contracts": "npm run build:contracts && node --test tests/contracts/*.test.mjs",
+    "test:step2": "node tests/step2/hardening.test.mjs"
+  }
+}
