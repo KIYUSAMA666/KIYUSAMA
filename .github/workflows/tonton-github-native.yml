@@ -120,6 +120,22 @@ jobs:
           codex --version
           echo "CODEX_CLI_INSTALL_ATTEMPTED=true"
           echo "CODEX_CLI_INSTALL_SOURCE=npm:@openai/codex@0.144.5"
+
+      - name: Probe OpenAI auth material presence without disclosure
+        id: auth_probe
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "OPENAI_API_KEY_PRESENT=true"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "OPENAI_API_KEY_PRESENT=false"
+          fi
+          echo "OPENAI_API_KEY_VALUE_EXPOSED=false"
           echo "CODEX_AUTH_ATTEMPTED=false"
           echo "CODEX_PROVIDER_CALL_ATTEMPTED=false"
           echo "CODEX_MODEL_EXECUTION_ATTEMPTED=false"
