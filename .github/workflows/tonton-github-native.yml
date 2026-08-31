@@ -37,7 +37,6 @@ jobs:
           echo "file=$FILE" >> "$GITHUB_OUTPUT"
 
       - name: Validate lightweight TONTON envelope
-        id: validate
         shell: bash
         env:
           FILE: ${{ steps.locate.outputs.file }}
@@ -45,97 +44,71 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import json, os, pathlib, re
-          p = pathlib.Path(os.environ['FILE'])
-          data = json.loads(p.read_text(encoding='utf-8'))
-          required = ['type', 'signalId', 'source']
-          for key in required:
-              if not isinstance(data.get(key), str) or not data[key].strip():
-                  raise SystemExit(f'invalid or missing {key}')
-          if data['type'] != 'TONTON_SIGNAL':
-              raise SystemExit('type must be TONTON_SIGNAL')
-          if not re.fullmatch(r'[A-Za-z0-9._:-]{1,160}', data['signalId']):
-              raise SystemExit('unsafe signalId')
-          allowed = {'type','signalId','source','dedupeKey','occurredAt','hint'}
-          extra = set(data) - allowed
-          if extra:
-              raise SystemExit(f'unexpected fields: {sorted(extra)}')
+          data = json.loads(pathlib.Path(os.environ['FILE']).read_text(encoding='utf-8'))
+          for key in ['type','signalId','source']:
+              if not isinstance(data.get(key), str) or not data[key].strip(): raise SystemExit(f'invalid or missing {key}')
+          if data['type'] != 'TONTON_SIGNAL': raise SystemExit('type must be TONTON_SIGNAL')
+          if not re.fullmatch(r'[A-Za-z0-9._:-]{1,160}', data['signalId']): raise SystemExit('unsafe signalId')
+          allowed={'type','signalId','source','dedupeKey','occurredAt','hint'}
+          if set(data)-allowed: raise SystemExit('unexpected fields')
           print(f"TONTON_SIGNAL_VALID signalId={data['signalId']} source={data['source']}")
           PY
 
       - name: ACK inside GitHub only
-        shell: bash
         run: |
-          set -euo pipefail
           echo "TONTON_GITHUB_NATIVE_ACK=OK"
           echo "NO_EXTERNAL_BACKEND_CALLED=true"
 
       - name: Verify backend-free OS runner contract
         working-directory: kiyusama-device
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --test tests/tonton/tonton-os-runner-contract.test.mjs
-          echo "TONTON_OS_RUNNER_CONTRACT=PASS"
+        run: node --test tests/tonton/tonton-os-runner-contract.test.mjs
 
       - name: Verify existing runner seam without backend
         working-directory: kiyusama-device
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --test tests/tonton/tonton-existing-runner-seam.test.mjs
-          echo "TONTON_EXISTING_RUNNER_SEAM=PASS"
+        run: node --test tests/tonton/tonton-existing-runner-seam.test.mjs
 
       - name: Verify replaceable existing runner adapter without backend
         working-directory: kiyusama-device
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --test tests/tonton/tonton-existing-runner-adapter.test.mjs
-          echo "TONTON_EXISTING_RUNNER_ADAPTER=PASS"
+        run: node --test tests/tonton/tonton-existing-runner-adapter.test.mjs
 
       - name: Verify isolated Codex executor contract without provider
         working-directory: kiyusama-device
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --test tests/tonton/tonton-codex-executor-contract.test.mjs
-          echo "TONTON_CODEX_EXECUTOR_CONTRACT=PASS"
-
-      - name: Probe Codex CLI availability before supply gate
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v codex >/dev/null 2>&1; then
-            echo "CODEX_CLI_AVAILABLE_BEFORE_INSTALL=true"
-          else
-            echo "CODEX_CLI_AVAILABLE_BEFORE_INSTALL=false"
-          fi
+        run: node --test tests/tonton/tonton-codex-executor-contract.test.mjs
 
       - name: Open CLI supply gate with pinned Codex package only
-        shell: bash
         run: |
           set -euo pipefail
           npm install -g @openai/codex@0.144.5
-          command -v codex
           codex --version
-          echo "CODEX_CLI_INSTALL_ATTEMPTED=true"
-          echo "CODEX_CLI_INSTALL_SOURCE=npm:@openai/codex@0.144.5"
 
-      - name: Probe OpenAI auth material presence without disclosure
-        id: auth_probe
+      - name: Validate OpenAI credential with minimal non-generation request
+        id: auth_validate
         shell: bash
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -euo pipefail
-          if [ -n "${OPENAI_API_KEY:-}" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-            echo "OPENAI_API_KEY_PRESENT=true"
+          test -n "${OPENAI_API_KEY:-}" || { echo "OPENAI_AUTH_VALID=false"; exit 1; }
+          CODE="$(curl -sS -o /tmp/openai-models.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${OPENAI_API_KEY}" \
+            https://api.openai.com/v1/models)"
+          if [ "$CODE" = "200" ]; then
+            echo "OPENAI_AUTH_VALID=true"
+            echo "OPENAI_AUTH_HTTP_STATUS=200"
+            echo "OPENAI_SECRET_VALUE_EXPOSED=false"
           else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "OPENAI_API_KEY_PRESENT=false"
+            echo "OPENAI_AUTH_VALID=false"
+            echo "OPENAI_AUTH_HTTP_STATUS=$CODE"
+            python3 - <<'PY'
+          import json
+          try:
+              d=json.load(open('/tmp/openai-models.json'))
+              e=d.get('error',{})
+              print('OPENAI_AUTH_ERROR_TYPE='+str(e.get('type','unknown')))
+              print('OPENAI_AUTH_ERROR_CODE='+str(e.get('code','unknown')))
+          except Exception:
+              print('OPENAI_AUTH_ERROR_TYPE=unparsed')
+          PY
+            exit 1
           fi
-          echo "OPENAI_API_KEY_VALUE_EXPOSED=false"
-          echo "CODEX_AUTH_ATTEMPTED=false"
-          echo "CODEX_PROVIDER_CALL_ATTEMPTED=false"
           echo "CODEX_MODEL_EXECUTION_ATTEMPTED=false"
