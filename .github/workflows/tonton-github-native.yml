@@ -93,3 +93,11 @@ jobs:
           set -euo pipefail
           node --test tests/tonton/tonton-existing-runner-adapter.test.mjs
           echo "TONTON_EXISTING_RUNNER_ADAPTER=PASS"
+
+      - name: Verify isolated Codex executor contract without provider
+        working-directory: kiyusama-device
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/tonton/tonton-codex-executor-contract.test.mjs
+          echo "TONTON_CODEX_EXECUTOR_CONTRACT=PASS"
