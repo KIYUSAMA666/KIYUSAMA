@@ -68,7 +68,6 @@ jobs:
           set -euo pipefail
           echo "TONTON_GITHUB_NATIVE_ACK=OK"
           echo "NO_EXTERNAL_BACKEND_CALLED=true"
-          echo "NO_NETWORK_STEP_PRESENT=true"
 
       - name: Verify backend-free OS runner contract
         working-directory: kiyusama-device
@@ -102,18 +101,25 @@ jobs:
           node --test tests/tonton/tonton-codex-executor-contract.test.mjs
           echo "TONTON_CODEX_EXECUTOR_CONTRACT=PASS"
 
-      - name: Probe Codex CLI availability without install or provider
-        id: codex_probe
+      - name: Probe Codex CLI availability before supply gate
         shell: bash
         run: |
           set -euo pipefail
           if command -v codex >/dev/null 2>&1; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            echo "CODEX_CLI_AVAILABLE=true"
-            codex --version
+            echo "CODEX_CLI_AVAILABLE_BEFORE_INSTALL=true"
           else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "CODEX_CLI_AVAILABLE=false"
+            echo "CODEX_CLI_AVAILABLE_BEFORE_INSTALL=false"
           fi
-          echo "CODEX_CLI_INSTALL_ATTEMPTED=false"
+
+      - name: Open CLI supply gate with pinned Codex package only
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g @openai/codex@0.144.5
+          command -v codex
+          codex --version
+          echo "CODEX_CLI_INSTALL_ATTEMPTED=true"
+          echo "CODEX_CLI_INSTALL_SOURCE=npm:@openai/codex@0.144.5"
+          echo "CODEX_AUTH_ATTEMPTED=false"
           echo "CODEX_PROVIDER_CALL_ATTEMPTED=false"
+          echo "CODEX_MODEL_EXECUTION_ATTEMPTED=false"
