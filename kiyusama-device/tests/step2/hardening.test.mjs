@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
+import { Worker } from 'node:worker_threads';
 import {
   atomicAccept,
   dispatchOnce,
@@ -49,16 +52,29 @@ test('TEST 7 — payload failure and duplicate conflict never leave claim-only s
   assert.equal(validState.payload.payload_json, '{"original":true}');
 });
 
-test('TEST 8 — concurrent claim has one winner and one Provider invocation', async (t) => {
-  const db = database(); t.after(() => db.close());
-  let providerCalls = 0;
-  const providerPost = async () => { providerCalls += 1; return { session_id: 'session-8' }; };
-  const attempts = await Promise.all(Array.from({ length: 16 }, () => dispatchOnce({
-    db, deviceEventId: 'device-8', hop: 1, providerPost, nowMs: 8000,
-  })));
+test('TEST 8 — independent connections race for one dispatch claim', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'kiyusama-test8-'));
+  const databasePath = join(directory, 'race.sqlite');
+  const setup = new SqliteD1Adapter(schema, databasePath); setup.close();
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const startGate = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2);
+  const providerCounter = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
+  const gate = new Int32Array(startGate);
+  const contenders = Array.from({ length: 16 }, (_, contender) => new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./dispatch-contender.mjs', import.meta.url), {
+      workerData: { contender, databasePath, startGate, providerCalls: providerCounter },
+    });
+    worker.once('message', resolve); worker.once('error', reject);
+  }));
+  while (Atomics.load(gate, 0) !== 16) await new Promise((resolve) => setImmediate(resolve));
+  Atomics.store(gate, 1, 1); Atomics.notify(gate, 1, 16);
+  const attempts = await Promise.all(contenders);
   const winners = attempts.filter((attempt) => attempt.winner).length;
+  const providerCalls = Atomics.load(new Int32Array(providerCounter), 0);
+  const db = new SqliteD1Adapter('', databasePath); t.after(() => db.close());
   const state = await row(db, 'SELECT * FROM dispatches WHERE device_event_id = ? AND hop = ?', 'device-8', 1);
-  console.log('TEST8_RACE_EVIDENCE', JSON.stringify({ contenders: 16, winners, losers: 16 - winners, providerCalls, state }));
+  console.log('TEST8_RACE_EVIDENCE', JSON.stringify({ executionContexts: attempts, contenders: 16, winners, losers: 16 - winners, providerCalls, state }));
+  assert.equal(attempts.filter((attempt) => attempt.error).length, 0);
   assert.equal(winners, 1); assert.equal(providerCalls, 1); assert.equal(state.state, 'DISPATCHED');
 });
 
@@ -103,7 +119,7 @@ test('TEST 9B — crash after POST forbids blind redispatch and becomes UNKNOWN_
   assert.equal(recovered.state, 'UNKNOWN_DISPATCH'); assert.equal(finalState.provider_session_id, null);
 });
 
-test('TEST 9C — slow healthy Provider is not reconciled or duplicated', async (t) => {
+test('TEST 9C — timeout-crossing reconciliation wins authority over late healthy completion', async (t) => {
   const db = database(); t.after(() => db.close());
   let providerCalls = 0; let resolveProvider;
   const response = new Promise((resolve) => { resolveProvider = resolve; });
@@ -112,20 +128,28 @@ test('TEST 9C — slow healthy Provider is not reconciled or duplicated', async 
     providerPost: async () => { providerCalls += 1; return response; },
   });
   await new Promise((resolve) => setImmediate(resolve));
-  const early = await reconcileStaleDispatch({
-    db, deviceEventId: 'device-9c', hop: 1, nowMs: 14999, dispatchTimeoutMs: 1000,
-    proveOutcome: async () => { throw new Error('must not reconcile early'); },
+  const raceLog = ['provider-outstanding', 'timeout-crossed'];
+  const reconciliation = reconcileStaleDispatch({
+    db, deviceEventId: 'device-9c', hop: 1, nowMs: 14010, dispatchTimeoutMs: 10,
+    proveOutcome: async () => {
+      raceLog.push('reconciler-acquired');
+      return { session_id: 'healthy-session', run_id: 'healthy-run' };
+    },
   });
   const duplicate = await dispatchOnce({
-    db, deviceEventId: 'device-9c', hop: 1, nowMs: 14999,
+    db, deviceEventId: 'device-9c', hop: 1, nowMs: 14010,
     providerPost: async () => { providerCalls += 1; return {}; },
   });
   resolveProvider({ session_id: 'healthy-session' });
-  await active;
+  const [recovered, activeResult] = await Promise.all([
+    reconciliation,
+    active.then(() => 'original-completed', (error) => { raceLog.push(error.message); return error.message; }),
+  ]);
   const finalState = await row(db, 'SELECT * FROM dispatches WHERE device_event_id = ?', 'device-9c');
-  console.log('TEST9C_SLOW_PROVIDER_EVIDENCE', JSON.stringify({ providerCalls, early, duplicate, finalState }));
-  assert.equal(early.reconciler, false); assert.equal(duplicate.winner, false);
-  assert.equal(providerCalls, 1); assert.equal(finalState.state, 'DISPATCHED');
+  console.log('TEST9C_TIMEOUT_RACE_EVIDENCE', JSON.stringify({ dispatchTimeoutMs: 10, providerCalls, duplicate, recovered, activeResult, raceLog, finalState }));
+  assert.equal(duplicate.winner, false); assert.equal(providerCalls, 1);
+  assert.equal(recovered.reconciler, true); assert.equal(activeResult, 'DISPATCH_CLAIM_LOST_BEFORE_OUTCOME_PERSIST');
+  assert.equal(finalState.state, 'DISPATCHED'); assert.equal(finalState.provider_session_id, 'healthy-session');
 });
 
 test('TEST 10 — capture actual node:sqlite UNIQUE error shape', async (t) => {
@@ -151,4 +175,3 @@ test('TEST 10 — capture actual node:sqlite UNIQUE error shape', async (t) => {
   console.log('TEST10_UNIQUE_ERROR_SHAPE', JSON.stringify(captured));
   assert.ok(captured); assert.match(captured.message, /UNIQUE constraint failed/);
 });
-

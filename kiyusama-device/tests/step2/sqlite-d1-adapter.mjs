@@ -20,9 +20,10 @@ class Statement {
 }
 
 export class SqliteD1Adapter {
-  constructor(schema) {
-    this.sqlite = new DatabaseSync(':memory:');
-    this.sqlite.exec(schema);
+  constructor(schema, location = ':memory:') {
+    this.sqlite = new DatabaseSync(location, { timeout: 10_000 });
+    this.sqlite.exec('PRAGMA busy_timeout = 10000');
+    if (schema) this.sqlite.exec(schema);
   }
   prepare(sql) { return new Statement(this, sql); }
   async batch(statements) {
@@ -39,4 +40,3 @@ export class SqliteD1Adapter {
   }
   close() { this.sqlite.close(); }
 }
-
