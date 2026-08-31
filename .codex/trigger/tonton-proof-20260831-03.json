@@ -1,0 +1,8 @@
+{
+  "type": "TONTON_SIGNAL",
+  "signalId": "tonton-proof-20260831-03",
+  "source": "github-native-proof",
+  "dedupeKey": "tonton-proof-20260831-03",
+  "occurredAt": "2026-08-31T16:04:00+09:00",
+  "hint": "verify existing runner seam only; no external backend"
+}
