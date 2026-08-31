@@ -77,3 +77,11 @@ jobs:
           set -euo pipefail
           node --test tests/tonton/tonton-os-runner-contract.test.mjs
           echo "TONTON_OS_RUNNER_CONTRACT=PASS"
+
+      - name: Verify existing runner seam without backend
+        working-directory: kiyusama-device
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/tonton/tonton-existing-runner-seam.test.mjs
+          echo "TONTON_EXISTING_RUNNER_SEAM=PASS"
