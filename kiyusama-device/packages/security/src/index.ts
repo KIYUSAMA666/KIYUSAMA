@@ -62,3 +62,65 @@ export function verifyDeliveryEventIdBinding(
     && bodyDeliveryEventId.length > 0
     && headerDeliveryEventId === bodyDeliveryEventId;
 }
+
+export type ReceiverDependencies = {
+  validateContract: (body: unknown) => boolean;
+  persistInbox: (body: unknown) => Promise<void> | void;
+  trace?: (step: string) => void;
+};
+
+export type ReceiverRequest = {
+  rawBody: string;
+  signatureHex: string;
+  timestamp: string;
+  headerDeliveryEventId: string | null | undefined;
+};
+
+export async function authenticateAndHandleRequest(
+  secret: string,
+  request: ReceiverRequest,
+  dependencies: ReceiverDependencies,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<boolean> {
+  const trace = dependencies.trace ?? (() => undefined);
+
+  trace('capture-raw-body');
+  const rawBody = request.rawBody;
+
+  trace('read-signature');
+  const signatureHex = request.signatureHex;
+
+  trace('read-timestamp');
+  const timestamp = request.timestamp;
+
+  trace('verify-timestamp');
+  if (!verifyTimestamp(timestamp, nowSeconds)) return false;
+
+  trace('verify-hmac');
+  if (!await verifySignature(secret, timestamp, rawBody, signatureHex)) return false;
+
+  trace('parse-json');
+  let body: unknown;
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return false;
+  }
+
+  trace('validate-contract');
+  if (!dependencies.validateContract(body)) return false;
+
+  const bodyDeliveryEventId = typeof body === 'object' && body !== null && 'delivery_event_id' in body
+    ? (body as { delivery_event_id?: unknown }).delivery_event_id
+    : undefined;
+
+  trace('verify-delivery-event-id-binding');
+  if (!verifyDeliveryEventIdBinding(
+    request.headerDeliveryEventId,
+    typeof bodyDeliveryEventId === 'string' ? bodyDeliveryEventId : undefined,
+  )) return false;
+
+  trace('persist-inbox');
+  await dependencies.persistInbox(body);
+  return true;
+}
