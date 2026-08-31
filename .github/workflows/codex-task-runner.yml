@@ -64,6 +64,34 @@ jobs:
           echo "task_id=$TASK_ID" >> "$GITHUB_OUTPUT"
           echo "COMMON_MEMORY_TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
 
+      - name: Checkout task-required base before Codex sandbox
+        if: steps.claim.outputs.has_task == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_BRANCH="$(sed -n 's/^REQUIRED BASE BRANCH:[[:space:]]*//p' /tmp/common-memory-task.txt | head -n 1)"
+          BASE_SHA="$(sed -n 's/^REQUIRED BASE SHA:[[:space:]]*//p' /tmp/common-memory-task.txt | head -n 1)"
+          if [ -z "$BASE_BRANCH" ] && [ -z "$BASE_SHA" ]; then
+            echo "CODEX_BASE_STATUS=DEFAULT_HEAD"
+            exit 0
+          fi
+          if [ -z "$BASE_BRANCH" ] || [ -z "$BASE_SHA" ]; then
+            echo "Task base metadata incomplete" >&2
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_BRANCH"
+          FETCHED_SHA="$(git rev-parse FETCH_HEAD)"
+          if [ "$FETCHED_SHA" != "$BASE_SHA" ]; then
+            echo "Base SHA mismatch: fetched=$FETCHED_SHA required=$BASE_SHA" >&2
+            exit 1
+          fi
+          git checkout --detach "$BASE_SHA"
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          test "$ACTUAL_SHA" = "$BASE_SHA"
+          echo "CODEX_BASE_STATUS=VERIFIED"
+          echo "CODEX_BASE_BRANCH=$BASE_BRANCH"
+          echo "CODEX_BASE_SHA=$BASE_SHA"
+
       - name: Install Codex CLI
         if: steps.claim.outputs.has_task == 'true'
         run: npm install -g @openai/codex@0.144.5
