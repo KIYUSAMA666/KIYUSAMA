@@ -30,7 +30,7 @@ jobs:
         working-directory: kiyusama-device
         run: |
           set -euxo pipefail
-          npm install --no-save --no-package-lock miniflare@latest
+          npm install --no-save --no-package-lock miniflare@4.20260730.0
           npm ls miniflare workerd || true
 
       - name: TEST 10 — D1 UNIQUE runtime proof
