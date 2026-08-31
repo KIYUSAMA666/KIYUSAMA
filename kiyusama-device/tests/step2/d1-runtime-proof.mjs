@@ -10,16 +10,16 @@ const mf = new Miniflare({
 try {
   const db = await mf.getD1Database("DB");
 
-  await db.exec(`
-    DROP TABLE IF EXISTS dispatch_claims;
+  await db.prepare("DROP TABLE IF EXISTS dispatch_claims").run();
+  await db.prepare(`
     CREATE TABLE dispatch_claims (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       device_event_id TEXT NOT NULL,
       hop INTEGER NOT NULL,
       payload TEXT,
       UNIQUE(device_event_id, hop)
-    );
-  `);
+    )
+  `).run();
 
   const key = ["evt-test10-d1", 3];
   await db.prepare(
