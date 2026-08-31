@@ -1,0 +1,8 @@
+{
+  "type": "TONTON_SIGNAL",
+  "signalId": "proof-20260831-07",
+  "source": "github-native-proof",
+  "dedupeKey": "tonton-proof-20260831-07",
+  "occurredAt": "2026-08-31T16:47:00+09:00",
+  "hint": "Pinned Codex CLI install/version proof only; no auth/provider/model execution"
+}
