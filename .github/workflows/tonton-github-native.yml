@@ -69,3 +69,11 @@ jobs:
           echo "TONTON_GITHUB_NATIVE_ACK=OK"
           echo "NO_EXTERNAL_BACKEND_CALLED=true"
           echo "NO_NETWORK_STEP_PRESENT=true"
+
+      - name: Verify backend-free OS runner contract
+        working-directory: kiyusama-device
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/tonton/tonton-os-runner-contract.test.mjs
+          echo "TONTON_OS_RUNNER_CONTRACT=PASS"
