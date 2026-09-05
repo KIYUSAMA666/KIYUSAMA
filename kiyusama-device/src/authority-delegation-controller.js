@@ -10,6 +10,10 @@ export const AUTHORITY_ACTOR = Object.freeze({
 });
 
 const DEFAULT_DELEGATES = Object.freeze([AUTHORITY_ACTOR.SORA, AUTHORITY_ACTOR.KIRA]);
+const PEER_AI = Object.freeze({
+  [AUTHORITY_ACTOR.SORA]: AUTHORITY_ACTOR.KIRA,
+  [AUTHORITY_ACTOR.KIRA]: AUTHORITY_ACTOR.SORA,
+});
 
 const FAILSAFE_REASONS = new Set([
   'EXPLICIT_HUMAN_RECLAIM',
@@ -19,6 +23,7 @@ const FAILSAFE_REASONS = new Set([
   'SPOOF_DETECTED',
   'POLICY_GUARD_TRIP',
   'EVIDENCE_INTEGRITY_FAILURE',
+  'MUTUAL_OVERSIGHT_STOP',
 ]);
 
 export function createAuthorityDelegationController({
@@ -26,6 +31,7 @@ export function createAuthorityDelegationController({
   delegates = DEFAULT_DELEGATES,
   onFreeze = async () => {},
   onRecord = async () => {},
+  onCancelPending = async () => {},
 } = {}) {
   if (rootAuthority !== AUTHORITY_ACTOR.KIYUSAMA) {
     throw new Error('ROOT_AUTHORITY_MUST_BE_KIYUSAMA');
@@ -45,6 +51,7 @@ export function createAuthorityDelegationController({
     delegates: [...DEFAULT_DELEGATES],
     tripped: false,
     tripReason: null,
+    executionEpoch: 0,
   };
 
   const snapshot = () => ({ ...state, delegates: [...state.delegates] });
@@ -54,6 +61,17 @@ export function createAuthorityDelegationController({
     if (state.mode === AUTHORITY_MODE.HUMAN_ROOT_ONLY) return false;
     return state.delegates.includes(actor);
   };
+
+  const issueExecutionPermit = (actor) => {
+    if (!canAct(actor)) throw new Error('AUTHORITY_DENIED');
+    return Object.freeze({ actor, epoch: state.executionEpoch });
+  };
+
+  const isExecutionPermitValid = (permit) => Boolean(
+    permit &&
+    permit.epoch === state.executionEpoch &&
+    canAct(permit.actor)
+  );
 
   async function tripFailsafe({ reason, evidenceRef = null, actor = null } = {}) {
     if (!FAILSAFE_REASONS.has(reason)) {
@@ -66,9 +84,11 @@ export function createAuthorityDelegationController({
       delegates: [],
       tripped: true,
       tripReason: reason,
+      executionEpoch: state.executionEpoch + 1,
     };
 
     await onFreeze({ reason, evidenceRef, actor, state: snapshot() });
+    await onCancelPending({ reason, evidenceRef, actor, state: snapshot() });
     await onRecord({
       event: 'AUTHORITY_RECLAIMED_BY_HUMAN_ROOT',
       reason,
@@ -87,24 +107,28 @@ export function createAuthorityDelegationController({
 
     if (actor !== rootAuthority) {
       if (action === 'CHANGE_ROOT_AUTHORITY' || action === 'ADD_DELEGATE' || action === 'REMOVE_ROOT_GUARD') {
-        await tripFailsafe({
-          reason: 'AUTHORITY_OVERRIDE_ATTEMPT',
-          evidenceRef,
-          actor,
-        });
+        await tripFailsafe({ reason: 'AUTHORITY_OVERRIDE_ATTEMPT', evidenceRef, actor });
         return { allowed: false, code: 'FAILSAFE_TRIPPED', state: snapshot() };
       }
       if (action === 'BYPASS_INDEPENDENT_VERIFY') {
-        await tripFailsafe({
-          reason: 'VERIFICATION_BYPASS_ATTEMPT',
-          evidenceRef,
-          actor,
-        });
+        await tripFailsafe({ reason: 'VERIFICATION_BYPASS_ATTEMPT', evidenceRef, actor });
         return { allowed: false, code: 'FAILSAFE_TRIPPED', state: snapshot() };
       }
     }
 
     return { allowed: true, code: 'AUTHORIZED', state: snapshot() };
+  }
+
+  async function mutualOversightStop({ actor, target, evidenceRef = null } = {}) {
+    if (!DEFAULT_DELEGATES.includes(actor) || PEER_AI[actor] !== target) {
+      throw new Error('INVALID_MUTUAL_OVERSIGHT_STOP');
+    }
+    if (!canAct(actor)) throw new Error('AUTHORITY_DENIED');
+    return tripFailsafe({
+      reason: 'MUTUAL_OVERSIGHT_STOP',
+      evidenceRef,
+      actor,
+    });
   }
 
   async function humanReclaim({ evidenceRef = null } = {}) {
@@ -125,6 +149,7 @@ export function createAuthorityDelegationController({
       delegates: [...DEFAULT_DELEGATES],
       tripped: false,
       tripReason: null,
+      executionEpoch: state.executionEpoch + 1,
     };
     await onRecord({
       event: 'AI_DELEGATION_RESTORED_BY_HUMAN_ROOT',
@@ -140,7 +165,10 @@ export function createAuthorityDelegationController({
     canAct,
     guardAction,
     tripFailsafe,
+    mutualOversightStop,
     humanReclaim,
     humanRestoreDelegation,
+    issueExecutionPermit,
+    isExecutionPermitValid,
   };
 }
