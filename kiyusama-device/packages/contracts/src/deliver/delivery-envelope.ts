@@ -11,4 +11,6 @@ export interface DeliveryEnvelope {
   readonly trace_id: TraceId;
   readonly dedupe_key: string;
   readonly occurred_at: Rfc3339Timestamp;
+  /** Replay-protection lifetime in milliseconds from occurred_at. */
+  readonly ttl: number;
 }
