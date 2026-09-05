@@ -1,0 +1,35 @@
+name: Legacy Codex Adapter Wrapper
+
+on:
+  push:
+    branches:
+      - sora/legacy-codex-adapter-wrapper-20260906
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wrapper-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pinned TypeScript for frozen Contract verification
+        working-directory: kiyusama-device
+        run: npm install --no-save --ignore-scripts typescript@5.8.3
+
+      - name: Re-verify frozen Contract baseline
+        working-directory: kiyusama-device
+        run: npm run test:contracts
+
+      - name: Test isolated Legacy Codex Adapter Wrapper
+        working-directory: kiyusama-device
+        run: node --test tests/tonton/legacy-codex-adapter-wrapper.test.mjs
