@@ -19,7 +19,13 @@ export interface VerifyRequest {
   readonly expires_at: Rfc3339Timestamp;
 }
 
-export type VerificationStatus = 'VERIFIED' | 'VERIFY_FAILED' | 'VERIFY_INCONCLUSIVE';
+export type VerificationStatus =
+  | 'VERIFIED'
+  | 'VERIFY_FAILED'
+  | 'VERIFY_INCONCLUSIVE'
+  | 'VERIFY_TIMEOUT'
+  | 'VERIFY_EXPIRED'
+  | 'FROZEN';
 
 export interface VerifyResult {
   readonly verify_id: VerifyId;
