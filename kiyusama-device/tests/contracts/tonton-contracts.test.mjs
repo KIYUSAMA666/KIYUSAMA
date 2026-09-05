@@ -65,6 +65,16 @@ test('terminal delivery states cannot transition again', () => {
   }
 });
 
+test('AUTHORIZED can transition to SPOOF_DETECTED', () => {
+  assert.equal(canTransitionDeliveryState('AUTHORIZED', 'SPOOF_DETECTED', transitionContext), true);
+});
+
+test('SPOOF_DETECTED is not reachable from unrelated stages', () => {
+  for (const state of ['ROUTED', 'DEDUPE_CHECKED', 'DELIVERY_ATTEMPTED', 'ACKNOWLEDGED', 'VERIFIED']) {
+    assert.equal(canTransitionDeliveryState(state, 'SPOOF_DETECTED', transitionContext), false, `${state} -> SPOOF_DETECTED`);
+  }
+});
+
 test('VerificationStatus declaration includes VERIFY_TIMEOUT', async () => {
   const declaration = await readFile(new URL('../../dist/contracts/verify/verify-contract.d.ts', import.meta.url), 'utf8');
   assert.match(declaration, /'VERIFY_TIMEOUT'/);
