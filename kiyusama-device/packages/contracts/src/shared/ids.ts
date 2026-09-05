@@ -1,0 +1,10 @@
+export type EventId = string;
+export type TraceId = string;
+export type RouteId = string;
+export type WakeId = string;
+export type AckId = string;
+export type VerifyId = string;
+export type DeliveryAttemptId = string;
+export type AdapterId = string;
+export type VerifierId = string;
+export type EvidenceId = string;

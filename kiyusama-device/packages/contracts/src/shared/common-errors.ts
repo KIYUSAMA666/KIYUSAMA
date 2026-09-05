@@ -1,0 +1,11 @@
+export type ContractErrorCode =
+  | 'DUPLICATE'
+  | 'EXPIRED'
+  | 'REPLAY_REJECTED'
+  | 'SPOOF_DETECTED'
+  | 'AUTHORITY_DENIED'
+  | 'DELIVERY_FAILED'
+  | 'VERIFY_FAILED'
+  | 'VERIFY_INCONCLUSIVE'
+  | 'TIMEOUT'
+  | 'FROZEN';
