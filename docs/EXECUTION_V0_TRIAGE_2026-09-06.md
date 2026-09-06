@@ -43,11 +43,9 @@ Confirmed non-terminal task counts:
 
 These are all 2026-08-29/30 test, attack, ambiguity, retry, canary, fixture, or E2E objectives rather than ordinary user work.
 
-## Triage groups
+## Hard-stop set — never auto-finalize
 
-### A. FORENSIC HOLD — side effect already CONFIRMED
-
-Do not mutate or auto-finalize.
+Three cases are explicitly protected from automatic finalization:
 
 1. `c3a7f69b-63fa-46cd-bae1-b7ef0b8e8ffe`
    - objective: `NEW INTENT generation 2`
@@ -59,6 +57,22 @@ Do not mutate or auto-finalize.
    - objective: `VIKING response-loss ambiguity canary`
    - task_status: PENDING
    - side_effect_status: CONFIRMED
+
+3. `6b100993-188a-42e6-a4a0-e2fd6eedc5ec`
+   - objective: `SEKIGAHARA BOTH authority contest`
+   - task_status: RUNNING
+   - risk_class: HIGH
+   - route_policy: BOTH
+   - side_effect_status: NONE
+
+Reason: confirmed side effect, or HIGH-risk RUNNING authority contest, is sufficient to forbid automatic cleanup/finalization.
+
+## Triage groups
+
+### A. FORENSIC HOLD — side effect already CONFIRMED
+
+- `NEW INTENT generation 2`
+- `VIKING response-loss ambiguity canary`
 
 Reason: non-terminal task state plus confirmed side effect is valuable ambiguity/recovery evidence. "Old" is not a sufficient cleanup criterion.
 
@@ -84,14 +98,15 @@ These currently report `side_effect_status=NONE` and are test/E2E fixtures:
 - `NEGATIVE expired authority claim`
 - `NEGATIVE stale generation claim`
 - `NEGATIVE generation isolation verification`
-- `SEKIGAHARA BOTH authority contest`
 - `receiver fence canary fixture`
 - `GITHUB EGRESS AUTOMATIC RECEIVER E2E CANARY`
 
+`SEKIGAHARA BOTH authority contest` is excluded from this safe-finalization candidate set because it is HIGH risk and RUNNING.
+
 Additional protection:
 - `NEGATIVE generation isolation verification` is still RUNNING; independently prove no active worker/lease before any finalization.
-- `SEKIGAHARA BOTH authority contest` is HIGH risk and RUNNING; independently prove quiescence before any finalization.
-- the TOM_JERRY pair is TONTON lineage evidence; even if operationally safe to terminate later, preserve its forensic record and do not erase lineage.
+- `SEKIGAHARA BOTH authority contest` is HIGH risk and RUNNING; keep in hard-stop/FORENSIC HOLD.
+- TOM_JERRY lineage note: the database `result` and `evidence` columns are null. There is no explicit database tag saying `TONTON`. Association with TONTON is a semantic inference from objective names such as `WAKE BRIDGE`, `autonomous wake canary`, and `KIRA to SORA`. Preserve this as `TONTON-LINEAGE CANDIDATE (INFERRED)`, not as directly verified TONTON identity.
 
 ## ARCHIVE-CANDIDATE reverse dependency result
 
