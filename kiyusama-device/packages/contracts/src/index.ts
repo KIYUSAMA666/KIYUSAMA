@@ -2,6 +2,7 @@ export * from './memory-continuation.js';
 export * from './memory-engine.js';
 export * from './recovery-gate.js';
 export * from './context-pack.js';
+export * from './freshness.js';
 export * from './signal-bus.js';
 export * from './core-interface.js';
 export * from './authority.js';
