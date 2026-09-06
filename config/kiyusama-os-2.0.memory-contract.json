@@ -1,0 +1,43 @@
+{
+  "schema_version": "kiyusama-memory-continuation/2.0-draft1",
+  "purpose": "Prevent rediscovery loops by preserving causal state, provenance, verification and next action across model/session replacement.",
+  "required_fields": [
+    "memory_id",
+    "subject",
+    "state",
+    "previous_state",
+    "cause",
+    "evidence_refs",
+    "version",
+    "freshness_at",
+    "source",
+    "verification_status",
+    "salience",
+    "next_action",
+    "recorded_at"
+  ],
+  "verification_status_values": ["VERIFIED", "PARTIAL", "INFERRED", "UNKNOWN", "CONTRADICTED"],
+  "salience_values": ["CORE", "HIGH", "NORMAL", "LOW"],
+  "continuation_sequence": ["RETRIEVE", "CHECK_FRESHNESS", "VERIFY_EVIDENCE", "COMPARE_CURRENT_STATE", "DECIDE", "ACT_WITHIN_LOCKS", "WRITE_BACK_CAUSAL_DIFF"],
+  "hard_rules": [
+    "CORE_MEMORY_RETRIEVE_FIRST",
+    "UNKNOWN_NEVER_BECOMES_VERIFIED_WITHOUT_EVIDENCE",
+    "INFERRED_MUST_REMAIN_LABELED_INFERRED",
+    "CONTRADICTION_MUST_PRESERVE_BOTH_OLD_AND_NEW_EVIDENCE_UNTIL_RESOLVED",
+    "NEXT_ACTION_MUST_DESCRIBE_CONTINUATION_NOT_RESTART",
+    "MODEL_INSTANCE_IS_REPLACEABLE_STATE_MUST_BE_EXTERNAL",
+    "NO_DESTRUCTIVE_RUNTIME_ACTION_DURING_OS_2_0_COMPLETION_LOCK"
+  ],
+  "causal_diff": {
+    "required": ["before_state", "after_state", "cause", "evidence_refs", "actor", "timestamp"],
+    "principle": "A future agent must be able to reconstruct why the state changed, not merely what the latest state says."
+  },
+  "recovery_failure_modes": [
+    "REDISCOVER_CRITICAL_ARTIFACT_AS_NEW",
+    "RESTART_FROM_ZERO",
+    "PROMOTE_RECOLLECTION_TO_FACT",
+    "LOSE_REASON_FOR_PREVIOUS_DECISION",
+    "FORGET_FAILED_ROUTE_AND_REPEAT_IT",
+    "FORGET_SALIENCE_OF_HARD_WON_ARTIFACT"
+  ]
+}
