@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{validateSensoryObservation}from'../../dist/contracts/index.js';test('sensory adapter is exported',()=>assert.equal(typeof validateSensoryObservation,'function'));
