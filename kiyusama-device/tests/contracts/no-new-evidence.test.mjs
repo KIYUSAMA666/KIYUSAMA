@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{retryCredit}from'../../dist/contracts/no-new-evidence.js';test('same evidence gives no retry credit',()=>assert.equal(retryCredit(['a','b'],['a','b']),false));test('new evidence grants retry credit',()=>assert.equal(retryCredit(['a'],['a','c']),true));
