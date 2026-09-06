@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{bootOs2}from'../../dist/contracts/index.js';test('OS2 boot gate is exported',()=>assert.equal(typeof bootOs2,'function'));
