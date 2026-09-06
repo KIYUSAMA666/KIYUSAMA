@@ -1,0 +1,22 @@
+name: OS2 Codex Audit
+on:
+  workflow_dispatch:
+  push:
+    branches: ['sora/kiyusama-os-2.0-assembly-20260906']
+    paths:
+      - '.codex/tasks/OS2_INTEGRATION_AUDIT.md'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Execute repository contract suite as Codex audit gate
+        working-directory: kiyusama-device
+        run: npm run test:contracts
+      - name: Emit audit task context
+        run: cat .codex/tasks/OS2_INTEGRATION_AUDIT.md
