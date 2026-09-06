@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{intentImpactGate}from'../../dist/contracts/index.js';test('intent impact gate is exported',()=>assert.equal(typeof intentImpactGate,'function'));
