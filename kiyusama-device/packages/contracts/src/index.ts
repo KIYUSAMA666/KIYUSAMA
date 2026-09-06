@@ -8,6 +8,7 @@ export * from './authority.js';
 export * from './root-of-trust.js';
 export * from './intent-impact.js';
 export * from './worker-fabric.js';
+export * from './execution-budget.js';
 export * from './counter-lane.js';
 export * from './independent-recount.js';
 export * from './verification-depth.js';
