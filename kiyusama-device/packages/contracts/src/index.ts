@@ -20,6 +20,7 @@ export * from './evidence-ledger.js';
 export * from './dedupe.js';
 export * from './sensory-adapter.js';
 export * from './failure-containment.js';
+export * from './review-learn-harden.js';
 export * from './kernel-health.js';
 export * from './boot.js';
 export * from './completion-gate.js';
