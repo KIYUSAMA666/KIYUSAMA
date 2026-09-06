@@ -1,0 +1,35 @@
+name: OS 2.0 Contracts CI
+
+on:
+  pull_request:
+    paths:
+      - 'kiyusama-device/packages/contracts/**'
+      - 'kiyusama-device/tests/contracts/**'
+      - 'kiyusama-device/tsconfig.contracts.json'
+      - 'kiyusama-device/package.json'
+      - '.github/workflows/os2-contracts-ci.yml'
+  push:
+    branches:
+      - 'sora/kiyusama-os-2.0-assembly-20260906'
+    paths:
+      - 'kiyusama-device/packages/contracts/**'
+      - 'kiyusama-device/tests/contracts/**'
+      - 'kiyusama-device/tsconfig.contracts.json'
+      - 'kiyusama-device/package.json'
+      - '.github/workflows/os2-contracts-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build and test contracts
+        working-directory: kiyusama-device
+        run: npm run test:contracts
