@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{validateMailboxMessage}from'../../dist/contracts/mailbox.js';test('accepts durable mailbox message',()=>assert.equal(validateMailboxMessage({message_id:'m1',correlation_id:'c1',from:'SORA',to:'KIRA',payload_ref:'p1',evidence_refs:['e1'],status:'DELIVERED',created_at:'2026-09-06T21:50:00+09:00'}).ok,true));
