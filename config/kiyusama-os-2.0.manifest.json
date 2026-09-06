@@ -1,129 +1,91 @@
 {
   "system": "KIYUSAMA OS 2.0",
-  "version": "2.0-assembly-2026-09-06",
-  "authority": "KIYUSAMA",
-  "status": "ACTIVE_BUILD",
+  "version": "2.0-reassembly-2026-09-06",
+  "status": "ACTIVE_REASSEMBLY",
+  "construction_mode": {
+    "goal": "REACH_COMPLETE_2_0_BEFORE_POST_COMPLETION_GOVERNANCE_REVIEW",
+    "operating_rule": "AI_LANES_ADVANCE_WITHIN_EXISTING_SAFETY_LOCKS_WITHOUT_REPEATED_HUMAN_CHECKPOINTS",
+    "governance_state": "DEFERRED_UNTIL_2_0_COMPLETE",
+    "human_review_mode": "POST_COMPLETION_REVIEW_AND_REWORK",
+    "reason": "PRESERVE_AND_USE_RECOVERED_CONTEXT_BEFORE_SESSION_MEMORY_DECAYS"
+  },
   "boot_policy": {
     "mode": "CONTINUE_FROM_VERIFIED_STATE",
-    "sequence": [
-      "RETRIEVE_LAST_CANONICAL_STATE",
-      "INTEGRITY_FRESHNESS_CHECK",
-      "RECOVER_CURRENT_CONTEXT",
-      "VERIFY_TOOLS_CONNECTIONS",
-      "RESUME_FROM_NEXT_ACTION",
-      "RECORD_CAUSAL_DIFF"
-    ],
-    "forbidden": [
-      "ASSUME_NOTHING_EXISTS",
-      "REBUILD_FROM_ZERO_WITHOUT_EVIDENCE",
-      "PROMOTE_UNVERIFIED_MEMORY_TO_FACT"
-    ]
+    "sequence": ["RETRIEVE_LAST_CANONICAL_STATE", "INTEGRITY_FRESHNESS_CHECK", "RECOVER_CURRENT_CONTEXT", "VERIFY_TOOLS_CONNECTIONS", "RESUME_FROM_NEXT_ACTION", "RECORD_CAUSAL_DIFF"],
+    "forbidden": ["ASSUME_NOTHING_EXISTS", "REBUILD_FROM_ZERO_WITHOUT_EVIDENCE", "PROMOTE_UNVERIFIED_MEMORY_TO_FACT"]
   },
-  "roles": {
-    "KIYUSAMA": ["ROOT_AUTHORITY", "FINAL_DECISION", "HUMAN_APPROVAL"],
-    "SORA": ["STRATEGY", "INTEGRATION", "COMMAND", "ASSEMBLY"],
-    "KIRA": ["INDEPENDENT_AUDIT", "COUNTER_THEORY", "VERIFICATION"],
-    "KUMO": ["RECORD", "MEMORY", "PROVENANCE", "RETRIEVAL"],
-    "YOGA": ["OVERSIGHT", "DIAGNOSIS", "GATEKEEPER"],
-    "CODEX_WORKER_POOL": ["CHECK", "MONITOR", "ATTACK", "DIG", "IMPLEMENT", "DOUBLE_ATTACK", "S_LANE", "K_LANE"]
+  "construction_lanes": {
+    "SORA": ["STRATEGY", "INTEGRATION", "ASSEMBLY", "BUILD_LANE"],
+    "KIRA": ["INDEPENDENT_AUDIT", "COUNTER_THEORY", "VERIFICATION_WHEN_INVOKED"],
+    "CODEX_WORKER_POOL": ["CHECK", "MONITOR", "ATTACK", "DIG", "IMPLEMENT", "DOUBLE_ATTACK", "S_LANE", "K_LANE"],
+    "KUMO": ["RECORD", "MEMORY", "PROVENANCE", "RETRIEVAL", "CHECKPOINT"],
+    "YOGA": ["OVERSIGHT", "DIAGNOSIS", "GATEKEEPER_FROZEN_UNLESS_NEEDED"]
   },
   "tonton": {
     "completion_state": "NOT_COMPLETE",
     "concept_state": "REOPENED",
     "legacy_reference": {
       "name": "7-stage",
-      "status": "PRESERVED_REFERENCE_NOT_FINAL_2_0_CONTRACT",
+      "schema": "tonton-stage/legacy-7stage-v1",
+      "status": "PRESERVED_COMPATIBILITY_NOT_FINAL_2_0_CONTRACT",
       "stages": ["WATCH", "WAKE", "ROUTE", "DELIVER", "ACK", "VERIFY", "RECORD"],
       "ack_state": "PARTIAL_LEGACY_IMPLEMENTATION_STOPPED",
       "delivery_state": "MULTIPLE_WORKING_LEGACY_PATHS_EXIST"
     },
-    "jimi_alternative": {
-      "status": "RECOVERY_REQUIRED",
-      "source": "JIMI_GEMINI_DISCUSSION",
-      "known_only_from_current_human_recollection": true,
-      "do_not_promote_to_fact": [
-        "EXACT_STAGE_NAMES",
-        "EXACT_EVENT_BUS_ARCHITECTURE",
-        "EXACT_WAKE_SEMANTICS"
-      ],
-      "hypothesis_to_test": "TONTON_MAY_NOT_REQUIRE_A_SEPARATE_LITERAL_SHOULDER_TAP_WAKE_STAGE"
+    "future_alternative_evidence": {
+      "status": "RECOVERY_REQUIRED_NOT_BLOCKING_CORE_REASSEMBLY",
+      "source": "JIMI_GEMINI_DISCUSSION_RECOLLECTION",
+      "do_not_promote_to_fact": ["EXACT_STAGE_NAMES", "EXACT_EVENT_BUS_ARCHITECTURE", "EXACT_WAKE_SEMANTICS"]
     },
-    "lock_gate": [
-      "RECOVER_ORIGINAL_JIMI_PROPOSAL",
-      "COMPARE_WITH_LEGACY_7_STAGE_RUNTIME",
-      "COMPARE_WITH_DESIRED_USER_EXPERIENCE",
-      "KIYUSAMA_FINAL_CONCEPT_LOCK"
-    ],
-    "forbidden": [
-      "DECLARE_TONTON_COMPLETE_FROM_DELIVERY_ONLY",
-      "DECLARE_LEGACY_WAKE_OBJECTS_EQUAL_FINAL_TONTON",
-      "FORCE_7_STAGE_DIAGRAM_WITHOUT_CONCEPT_LOCK"
-    ],
-    "next_action": "RECOVER_ORIGINAL_JIMI_TONTON_PROPOSAL"
+    "forbidden": ["DECLARE_TONTON_COMPLETE_FROM_DELIVERY_ONLY", "DECLARE_LEGACY_WAKE_OBJECTS_EQUAL_FINAL_TONTON", "FORCE_7_STAGE_AS_FINAL_2_0_TOPOLOGY"]
   },
   "memory_loop": {
     "sequence": ["WRITE", "STORE", "SEARCH", "RETRIEVE", "VERIFY", "USE", "WRITE_BACK"],
-    "required_state_fields": [
-      "subject",
-      "state",
-      "previous_state",
-      "cause",
-      "evidence_ref",
-      "version",
-      "freshness",
-      "source",
-      "verification_status",
-      "salience",
-      "next_action"
-    ],
+    "required_state_fields": ["subject", "state", "previous_state", "cause", "evidence_ref", "version", "freshness", "source", "verification_status", "salience", "next_action"],
     "principle": "MEMORY_MUST_PRESERVE_CAUSAL_HISTORY"
   },
-  "infrastructure": {
-    "github": {
-      "repo": "KIYUSAMA666/KIYUSAMA",
-      "purpose": ["SOURCE", "CODE", "SPEC", "EVIDENCE"]
-    },
-    "supabase": {
-      "project_id": "zdypjilutgxjsneultqj",
-      "purpose": ["COMMON_MEMORY", "AUDIT_LOG", "RUNTIME_STATE", "EDGE_FUNCTIONS"]
-    }
-  },
-  "known_active_components": [
+  "preserve_core": [
     "ai-signal-receiver-v1",
     "kira-signal-executor-v1",
     "sora-signal-executor-v1",
-    "codex-openai-proxy-v1",
-    "codex-task-bridge-v1",
-    "codex-k-openai-proxy-v1",
-    "kira-managed-agent-wake-v1",
     "kira-managed-wake-executor-v1",
-    "codex-claude-runner-probe-v1",
-    "claude-lane-executor-v1",
-    "tonton-trash-demon-v1"
+    "kira-managed-agent-wake-v1",
+    "kira-main-mailbox-mcp-v1",
+    "execution-github-egress-gateway-v1",
+    "sensory-audio-listener-v1",
+    "sensory-video-listener-v1",
+    "sensory-multimodal-orchestrator-v1",
+    "execution_v0",
+    "COMMON_MEMORY_SIGNAL_MAILBOX_EXECUTION_EVIDENCE_PATHS"
   ],
+  "archive_candidates_frozen": [
+    "kira-provider-presence-v1",
+    "sora-provider-presence-v1",
+    "kira-managed-agent-upgrade-v1",
+    "kira-managed-custom-tool-upgrade-v1",
+    "kira-managed-tool-inventory-probe-v1",
+    "execution-github-dispatch-worker-v0",
+    "codex-claude-runner-probe-v1"
+  ],
+  "forensic_hold": {
+    "components": ["slack-kira-wake-receiver-v1", "tonton-trash-demon-v1"],
+    "execution_v0_hard_stop": ["NEW INTENT generation 2", "VIKING response-loss ambiguity canary", "SEKIGAHARA BOTH authority contest"],
+    "evidence_rule": "EXPIRED_AUTHORITY_PLUS_NULL_STARTED_AT_SUPPORTS_QUIESCENCE_ONLY_NOT_HARMLESSNESS"
+  },
+  "infrastructure": {
+    "github": {"repo": "KIYUSAMA666/KIYUSAMA", "purpose": ["SOURCE", "CODE", "SPEC", "EVIDENCE"]},
+    "supabase": {"project_id": "zdypjilutgxjsneultqj", "purpose": ["COMMON_MEMORY", "AUDIT_LOG", "RUNTIME_STATE", "EDGE_FUNCTIONS"]}
+  },
   "trash_demon": {
     "preservation_state": "FROZEN_PRESERVE_FIRST",
     "launcher": "tonton-trash-demon-v1",
     "launcher_observed_status": "ACTIVE",
     "original_agent_identity": "UNVERIFIED",
-    "reactivation_allowed": false,
-    "reactivation_gate": [
-      "IDENTIFY_ORIGINAL_AGENT",
-      "PRESERVE_AGENT_CONFIG",
-      "PRESERVE_ENVIRONMENT_TOOLS_PERMISSIONS",
-      "CORRELATE_HISTORICAL_ACTIVITY_SIGNATURE",
-      "NON_DESTRUCTIVE_ONE_SHOT_APPROVAL"
-    ]
+    "reactivation_allowed": false
   },
   "codex_fabric": {
     "model": "MOVABLE_WORKER_POOL",
-    "verified_historical_patterns": [
-      "SORA_COMMON_MEMORY_CODEX_SORA_QA",
-      "S_LANE",
-      "K_LANE",
-      "CROSS_MONITOR",
-      "CODEX_TO_CLAUDE_FORWARD"
-    ],
+    "verified_historical_patterns": ["SORA_COMMON_MEMORY_CODEX_SORA_QA", "S_LANE", "K_LANE", "CROSS_MONITOR", "CODEX_TO_CLAUDE_FORWARD"],
     "fixed_instance_count": "UNVERIFIED",
     "routing_rule": "ATTACH_DETACH_MOVE_BY_ROUTE_WITH_TRACE"
   },
@@ -132,22 +94,10 @@
     "principle": "AGGREGATOR_SHALL_NOT_AUDIT_ITSELF",
     "security_rule": "AUTHORIZED_BOUNDARIES_ONLY"
   },
-  "evidence_rules": [
-    "TWO_AI_CHECK_WHERE_APPROPRIATE",
-    "EVIDENCE_LINEAGE_REQUIRED",
-    "EVIDENCE_FRESHNESS_REQUIRED",
-    "RECOUNT_MUST_BE_REPRODUCIBLE",
-    "NO_NEW_EVIDENCE_NO_RETRY_CREDIT",
-    "NODE_EDGE_LOOP_ABSENCE"
-  ],
-  "assembly_phases": [
-    "A_FREEZE_AND_INVENTORY",
-    "B_RECOVER_TONTON_CONCEPT_BEFORE_LOCK",
-    "C_MEMORY_CONTINUATION",
-    "D_CODEX_WORKER_FABRIC",
-    "E_INDEPENDENT_COUNTER_LANE",
-    "F_TONTON_IMPLEMENTATION_AFTER_CONCEPT_LOCK",
-    "G_TRASH_DEMON_REACTIVATION"
-  ],
-  "current_next_action": "RECOVER_ORIGINAL_JIMI_TONTON_PROPOSAL_AND_COMPARE_WITH_LEGACY_RUNTIME"
+  "evidence_rules": ["TWO_AI_CHECK_WHERE_APPROPRIATE", "EVIDENCE_LINEAGE_REQUIRED", "EVIDENCE_FRESHNESS_REQUIRED", "RECOUNT_MUST_BE_REPRODUCIBLE", "NO_NEW_EVIDENCE_NO_RETRY_CREDIT", "NODE_EDGE_LOOP_ABSENCE"],
+  "completion_lock": {
+    "locked_until_post_completion_review": ["DELETE_OR_ARCHIVE_REMOVAL", "PRODUCTION_DB_TASK_STATE_MUTATION", "EDGE_FUNCTION_REDEPLOY_OR_REMOVAL", "PRODUCTION_ROUTE_CHANGE", "TRASH_DEMON_INVOCATION_OR_RESTART", "PRODUCTION_MERGE", "POST_2_0_EVOLUTION_MODIFICATION"]
+  },
+  "assembly_phases": ["A_RECOVERY_CLASSIFICATION_LOCKED", "B_CONTRACT_DECANONICALIZATION_COMPLETE", "C_MEMORY_CONTINUATION", "D_CORE_REASSEMBLY", "E_CODEX_WORKER_FABRIC", "F_INDEPENDENT_COUNTER_LANE", "G_TONTON_FINAL_TOPOLOGY", "H_INTEGRATION_VERIFICATION", "I_COMPLETE_2_0_CANDIDATE", "J_POST_COMPLETION_GOVERNANCE_REVIEW"],
+  "current_next_action": "BUILD_MEMORY_CONTINUATION_AND_CORE_REASSEMBLY_WITHOUT_PRODUCTION_MUTATION"
 }
