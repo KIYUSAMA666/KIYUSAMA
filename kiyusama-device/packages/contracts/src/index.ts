@@ -5,6 +5,7 @@ export * from './signal-bus.js';
 export * from './core-interface.js';
 export * from './worker-fabric.js';
 export * from './counter-lane.js';
+export * from './verification-depth.js';
 export * from './tonton-boundary.js';
 export * from './mailbox.js';
 export * from './runtime-chain.js';
