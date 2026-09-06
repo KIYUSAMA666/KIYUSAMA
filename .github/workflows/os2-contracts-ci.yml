@@ -8,15 +8,10 @@ on:
       - 'kiyusama-device/tsconfig.contracts.json'
       - 'kiyusama-device/package.json'
       - '.github/workflows/os2-contracts-ci.yml'
-  push:
-    branches:
-      - 'sora/kiyusama-os-2.0-assembly-20260906'
-    paths:
-      - 'kiyusama-device/packages/contracts/**'
-      - 'kiyusama-device/tests/contracts/**'
-      - 'kiyusama-device/tsconfig.contracts.json'
-      - 'kiyusama-device/package.json'
-      - '.github/workflows/os2-contracts-ci.yml'
+
+concurrency:
+  group: os2-contracts-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
