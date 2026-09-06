@@ -52,21 +52,44 @@ Operational principle:
 
 > CODEX IS A PORTABLE WORKER POOL, NOT A SINGLE FIXED AGENT.
 
-## 3. TONTON — NERVOUS / DELIVERY LOOP
+## 3. TONTON — CURRENT STATUS: NOT YET CANONICAL
 
-Canonical seven-stage contract:
+TONTON is NOT complete and the final TONTON concept is NOT yet locked in 2.0.
 
-1. WATCH — find the event
-2. WAKE — wake the target
-3. ROUTE — select lane / destination
-4. DELIVER — deliver the task or payload
-5. ACK — establish receipt / acceptance state
-6. VERIFY — independently verify outcome
-7. RECORD — persist result, evidence, state transition, and next point
+The older design used a seven-stage metaphor:
 
-Important historical correction:
-- ACK was partially implemented and then stopped; it must not be described as never existing.
-- Existing working paths may terminate on REPLIED in legacy lanes. 2.0 must keep compatibility while making closure explicit.
+1. WATCH
+2. WAKE
+3. ROUTE
+4. DELIVER
+5. ACK
+6. VERIFY
+7. RECORD
+
+That model remains valuable as a legacy reference and evidence map, but 2.0 must not assume that "WAKE" means a literal shoulder-tap / sleeping-agent wake mechanism.
+
+Historical correction from KIYUSAMA:
+- delivery paths already exist and can reach the destination;
+- that alone is not sufficient to declare TONTON complete;
+- a later JIMI/Gemini discussion challenged the whole premise that TONTON must be modeled as "tap the shoulder -> target turns around";
+- SORA and KIRA considered that alternative significant;
+- the exact JIMI proposal has not yet been recovered from primary evidence in this assembly pass, so it must not be reconstructed from memory as fact.
+
+Therefore 2.0 keeps two conceptual candidates open:
+
+### LEGACY TONTON MODEL
+`WATCH -> WAKE -> ROUTE -> DELIVER -> ACK -> VERIFY -> RECORD`
+
+### EVENT-NATIVE / JIMI CANDIDATE
+A model in which an event is already present in a common stream/bus/subscription fabric and relevant agents react without a separate literal wake gesture.
+
+Exact stages and semantics remain UNVERIFIED until the original JIMI discussion is recovered.
+
+2.0 rule:
+
+> DO NOT IMPLEMENT A FAKE WAKE SLOT JUST TO COMPLETE THE OLD DIAGRAM.
+
+TONTON remains `NOT_COMPLETE / CONCEPT_REOPENED` until the old seven-stage model and the JIMI alternative are compared against verified runtime behavior and the original discussion.
 
 ## 4. COMMON MEMORY — MEMORY LOOP
 
@@ -155,7 +178,7 @@ Verified historical implementation evidence includes:
               +--------+-------+--------+-------+
                        |                |
                   +----v----------------v----+
-                  |  TARGET / TONTON / BUS   |
+                  | TARGET / EVENT FABRIC    |
                   +-------------+------------+
                                 |
                          +------v-------+
@@ -164,7 +187,7 @@ Verified historical implementation evidence includes:
                          +--------------+
 ```
 
-Codex lanes may be attached, detached, and moved by ROUTE. A fixed five-agent topology is not assumed; historical count/roles must be recovered before naming exact instances.
+Codex lanes may be attached, detached, and moved by routing logic. A fixed five-agent topology is not assumed; historical count/roles must be recovered before naming exact instances.
 
 ## 7. INDEPENDENT COUNTER-THEORY LANE
 
@@ -225,9 +248,11 @@ These are inventory facts, not proof that every path is currently healthy end-to
 - identify exact Agent / Environment / Session lineage
 - map current runtime components without mutation
 
-### PHASE B — CANONICAL CONTRACT MAP
-- map WATCH / WAKE / ROUTE / DELIVER / ACK / VERIFY / RECORD to concrete current objects, functions, tables, events, and evidence
-- maintain compatibility with existing REPLIED terminals while adding explicit closure semantics
+### PHASE B — RECOVER TONTON CONCEPT BEFORE LOCK
+- preserve the seven-stage model as legacy evidence
+- recover the original JIMI/Gemini alternative discussion
+- compare both against current runtime and desired user experience
+- do not declare TONTON complete or WAKE solved until KIYUSAMA locks the concept
 
 ### PHASE C — MEMORY CONTINUATION
 - require PRE-ACTION RETRIEVAL
@@ -244,10 +269,11 @@ These are inventory facts, not proof that every path is currently healthy end-to
 - authorized KIRA/Claude audit / counter-theory lane
 - separate evidence lineage from SORA aggregation
 
-### PHASE F — TONTON E2E
-- run only after the current map is verified
-- prove each of the seven stages
-- record one full causal loop
+### PHASE F — TONTON IMPLEMENTATION
+- only after the TONTON concept is locked
+- reuse delivery/routing/message infrastructure already proven
+- fill only the genuinely missing mechanism(s)
+- prove the chosen end-to-end semantics rather than forcing seven legacy labels
 
 ### PHASE G — TRASH DEMON REACTIVATION
 - only after exact identity preservation
@@ -289,7 +315,9 @@ BOOT -> ASSUME NOTHING EXISTS -> REBUILD EVERYTHING
 As of 2026-09-06:
 - KIYUSAMA OS 2.0 architecture baseline assembled here.
 - Existing legacy infrastructure is preserved.
-- TONTON 7-stage contract is canonical at the design layer.
+- TONTON is NOT COMPLETE and its final concept is REOPENED.
+- The seven-stage TONTON design is a LEGACY_REFERENCE, not the final locked 2.0 contract.
+- The JIMI/Gemini alternative is a required recovery target before TONTON lock.
 - COMMON MEMORY loop is canonical.
 - Codex movable multi-lane worker model is canonical.
 - independent counter-theory lane is required.
@@ -298,4 +326,4 @@ As of 2026-09-06:
 
 Next canonical action:
 
-> Build the machine-readable component/contract manifest and map every TONTON stage to current verified implementation objects before any destructive cleanup or restart.
+> Recover the original JIMI TONTON proposal and compare it with the legacy seven-stage model before locking TONTON 2.0.
