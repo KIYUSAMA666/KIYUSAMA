@@ -11,6 +11,7 @@ export * from './worker-fabric.js';
 export * from './counter-lane.js';
 export * from './independent-recount.js';
 export * from './verification-depth.js';
+export * from './no-new-evidence.js';
 export * from './tonton-boundary.js';
 export * from './mailbox.js';
 export * from './runtime-chain.js';
