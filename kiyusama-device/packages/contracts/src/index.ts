@@ -5,6 +5,7 @@ export * from './context-pack.js';
 export * from './signal-bus.js';
 export * from './core-interface.js';
 export * from './authority.js';
+export * from './root-of-trust.js';
 export * from './intent-impact.js';
 export * from './worker-fabric.js';
 export * from './counter-lane.js';
