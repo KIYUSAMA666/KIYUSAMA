@@ -28,17 +28,38 @@
     "CODEX_WORKER_POOL": ["CHECK", "MONITOR", "ATTACK", "DIG", "IMPLEMENT", "DOUBLE_ATTACK", "S_LANE", "K_LANE"]
   },
   "tonton": {
-    "contract_version": "7-stage-canonical",
-    "stages": [
-      {"order": 1, "name": "WATCH", "state": "CANONICAL_DESIGN"},
-      {"order": 2, "name": "WAKE", "state": "CANONICAL_DESIGN"},
-      {"order": 3, "name": "ROUTE", "state": "CANONICAL_DESIGN"},
-      {"order": 4, "name": "DELIVER", "state": "CANONICAL_DESIGN"},
-      {"order": 5, "name": "ACK", "state": "PARTIAL_LEGACY_IMPLEMENTATION_STOPPED"},
-      {"order": 6, "name": "VERIFY", "state": "CANONICAL_DESIGN"},
-      {"order": 7, "name": "RECORD", "state": "CANONICAL_DESIGN"}
+    "completion_state": "NOT_COMPLETE",
+    "concept_state": "REOPENED",
+    "legacy_reference": {
+      "name": "7-stage",
+      "status": "PRESERVED_REFERENCE_NOT_FINAL_2_0_CONTRACT",
+      "stages": ["WATCH", "WAKE", "ROUTE", "DELIVER", "ACK", "VERIFY", "RECORD"],
+      "ack_state": "PARTIAL_LEGACY_IMPLEMENTATION_STOPPED",
+      "delivery_state": "MULTIPLE_WORKING_LEGACY_PATHS_EXIST"
+    },
+    "jimi_alternative": {
+      "status": "RECOVERY_REQUIRED",
+      "source": "JIMI_GEMINI_DISCUSSION",
+      "known_only_from_current_human_recollection": true,
+      "do_not_promote_to_fact": [
+        "EXACT_STAGE_NAMES",
+        "EXACT_EVENT_BUS_ARCHITECTURE",
+        "EXACT_WAKE_SEMANTICS"
+      ],
+      "hypothesis_to_test": "TONTON_MAY_NOT_REQUIRE_A_SEPARATE_LITERAL_SHOULDER_TAP_WAKE_STAGE"
+    },
+    "lock_gate": [
+      "RECOVER_ORIGINAL_JIMI_PROPOSAL",
+      "COMPARE_WITH_LEGACY_7_STAGE_RUNTIME",
+      "COMPARE_WITH_DESIRED_USER_EXPERIENCE",
+      "KIYUSAMA_FINAL_CONCEPT_LOCK"
     ],
-    "next_action": "MAP_STAGES_TO_CURRENT_VERIFIED_RUNTIME_OBJECTS"
+    "forbidden": [
+      "DECLARE_TONTON_COMPLETE_FROM_DELIVERY_ONLY",
+      "DECLARE_LEGACY_WAKE_OBJECTS_EQUAL_FINAL_TONTON",
+      "FORCE_7_STAGE_DIAGRAM_WITHOUT_CONCEPT_LOCK"
+    ],
+    "next_action": "RECOVER_ORIGINAL_JIMI_TONTON_PROPOSAL"
   },
   "memory_loop": {
     "sequence": ["WRITE", "STORE", "SEARCH", "RETRIEVE", "VERIFY", "USE", "WRITE_BACK"],
@@ -121,12 +142,12 @@
   ],
   "assembly_phases": [
     "A_FREEZE_AND_INVENTORY",
-    "B_CANONICAL_CONTRACT_MAP",
+    "B_RECOVER_TONTON_CONCEPT_BEFORE_LOCK",
     "C_MEMORY_CONTINUATION",
     "D_CODEX_WORKER_FABRIC",
     "E_INDEPENDENT_COUNTER_LANE",
-    "F_TONTON_E2E",
+    "F_TONTON_IMPLEMENTATION_AFTER_CONCEPT_LOCK",
     "G_TRASH_DEMON_REACTIVATION"
   ],
-  "current_next_action": "MAP_TONTON_7_STAGES_TO_EXISTING_FUNCTIONS_TABLES_EVENTS_AND_EVIDENCE"
+  "current_next_action": "RECOVER_ORIGINAL_JIMI_TONTON_PROPOSAL_AND_COMPARE_WITH_LEGACY_RUNTIME"
 }
