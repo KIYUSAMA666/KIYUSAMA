@@ -4,6 +4,7 @@ export * from './recovery-gate.js';
 export * from './context-pack.js';
 export * from './freshness.js';
 export * from './signal-bus.js';
+export * from './correlation.js';
 export * from './core-interface.js';
 export * from './authority.js';
 export * from './root-of-trust.js';
