@@ -5,6 +5,7 @@ export * from './core-interface.js';
 export * from './worker-fabric.js';
 export * from './counter-lane.js';
 export * from './tonton-boundary.js';
+export * from './mailbox.js';
 export * from './runtime-chain.js';
 export * from './runtime-orchestrator.js';
 export * from './runtime-adapter.js';
