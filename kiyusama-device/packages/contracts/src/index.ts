@@ -3,6 +3,7 @@ export * from './memory-engine.js';
 export * from './recovery-gate.js';
 export * from './context-pack.js';
 export * from './freshness.js';
+export * from './authenticity.js';
 export * from './signal-bus.js';
 export * from './correlation.js';
 export * from './loop-guard.js';
