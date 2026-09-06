@@ -1,7 +1,7 @@
 # KIYUSAMA OS 2.0 — RECOVERY / CLEANUP LEDGER
 
 Date: 2026-09-06
-Status: ACTIVE RECOVERY / READ-ONLY RUNTIME AUDIT
+Status: ACTIVE RECOVERY / KIRA AUDIT HOLD
 Authority: KIYUSAMA
 
 ## Rule
@@ -12,35 +12,48 @@ Recovery and cleanup precede evolution.
 RECOVER -> CLASSIFY -> PRESERVE -> CLEAN -> REASSEMBLE -> VERIFY -> EVOLVE LATER
 ```
 
-No runtime component is deleted, redeployed, restarted, or promoted solely because it appears in this ledger.
+No runtime component is deleted, redeployed, restarted, invoked for proof, or promoted solely because it appears in this ledger.
 
 ## Classification
 
 - `LIVE_CONTINUITY` — recent evidence shows the lane is still producing events.
 - `PRESERVE_CORE` — valuable working/lineage asset; preserve before cleanup.
+- `PRESERVE_CANDIDATE` — protect from cleanup while dependency/role is audited.
 - `LEGACY_CANDIDATE` — older path; keep until replacement/lineage is proven.
 - `EXPERIMENTAL_RESIDUE` — named test/probe/canary/diagnostic; cleanup candidate only after dependency proof.
 - `FORENSIC_HOLD` — do not modify until identity/lineage is resolved.
 - `EVOLUTION_PARKED` — future design idea, not part of recovery/build baseline.
 
+## KIRA INDEPENDENT AUDIT 2026-09-06
+
+Overall verdict: `HOLD`.
+
+Accepted findings:
+1. `codex-claude-runner-probe-v1` was internally double-classified. Corrected below to `PRESERVE_CANDIDATE`; it must not be a cleanup candidate until its Codex -> Claude lineage/dependencies are resolved.
+2. Eleven ACTIVE Edge Functions were missing from the classification ledger. All eleven are now explicitly protected as `PRESERVE_CANDIDATE` pending evidence-based classification.
+3. `slack-kira-wake-receiver-v1` is especially protected because it appears in the historical TONTON WATCH/runtime evidence map.
+4. KIRA could verify TRASH DEMON deployment state was unchanged, but could not independently prove absence of invocation from deployment state alone. Therefore invocation status remains `UNVERIFIED_BY_INDEPENDENT_RUNTIME_LOG` rather than PASS.
+
+No destructive action is authorized by this correction.
+
 ## 1. LIVE CONTINUITY
 
 ### CODEX monitoring lane
 - `CODEX_CROSS_MONITOR_SCAN`
-- observed count: 5,790
-- latest observed: 2026-09-06 09:05:00 UTC
+- SORA observation at ledger creation: 5,790 events, latest 2026-09-06 09:05 UTC.
+- KIRA recount later observed 5,801, confirming continued growth.
 - classification: `LIVE_CONTINUITY / PRESERVE_CORE`
 
 ### PROD004 audit scan
 - `PROD004_AUDIT_CANDIDATE_SCAN`
-- observed count: 5,277
-- latest observed: 2026-09-06 09:05:00 UTC
+- SORA observation at ledger creation: 5,277 events, latest 2026-09-06 09:05 UTC.
+- KIRA recount later observed 5,288, confirming continued growth.
 - classification: `LIVE_CONTINUITY / LEGACY_CANDIDATE`
 - note: still active; do not call it dead residue.
 
 ## 2. RECENT END-TO-END MESSAGE / EXECUTION CONTINUITY
 
-A verified 2026-09-03 trace exists for one SORA -> KIRA managed-wake flow:
+Verified historical 2026-09-03 SORA -> KIRA managed-wake trace:
 
 ```text
 AI_SIGNAL_EMITTED
@@ -53,16 +66,18 @@ AI_SIGNAL_EMITTED
  -> KIRA_BC_TRACE_AUTH
 ```
 
-Observed identifiers:
-- parent message: `259c01c3-8c82-47ee-affc-6aa2b1254735`
-- thread: `6e719b8f-7b97-430e-a618-1f7e9bf31d0a`
-- execution: `ac9a1f0e-aea5-4f14-9bcc-fe80c7299a17`
-- KIRA agent: `agent_015huKGzTmKTsT4jFD5YtSjZ`
-- environment: `env_011S65g7qUErttJ4hf45uYXd`
-- session: `sesn_013YTkHDtiatnRhj6CSy7mH6`
-- executed function: `kira-managed-wake-executor-v1`
+Identifiers:
+- parent message `259c01c3-8c82-47ee-affc-6aa2b1254735`
+- thread `6e719b8f-7b97-430e-a618-1f7e9bf31d0a`
+- execution `ac9a1f0e-aea5-4f14-9bcc-fe80c7299a17`
+- KIRA agent `agent_015huKGzTmKTsT4jFD5YtSjZ`
+- environment `env_011S65g7qUErttJ4hf45uYXd`
+- session `sesn_013YTkHDtiatnRhj6CSy7mH6`
+- function `kira-managed-wake-executor-v1`
 
-Classification: `PRESERVE_CORE` as a proven working historical continuity path. This is not a claim that it is the final TONTON concept.
+KIRA independently confirmed the parent message exists as `REPLIED` with `ack_at = null`, consistent with ACK being partial/stopped and REPLIED serving as terminal compatibility in that path.
+
+Classification: `PRESERVE_CORE`. This is historical continuity evidence, not proof of final TONTON.
 
 ## 3. PRESERVE CORE — CURRENTLY ACTIVE FUNCTIONS
 
@@ -78,20 +93,43 @@ Preserve first; evaluate during reassembly:
 - `kira-managed-agent-wake-v1`
 - `kira-main-mailbox-mcp-v1`
 - `gmail-pubsub-adapter-v1`
-- `codex-claude-runner-probe-v1`
 - `claude-lane-executor-v1`
 
-These are preserved because they are part of known message, execution, Codex, memory, or cross-AI lineage. `ACTIVE` means deployed/active in Supabase; it does not by itself prove current E2E health.
+`ACTIVE` means deployed/active; it does not by itself prove current E2E health.
 
-## 4. FORENSIC HOLD — TRASH DEMON
+## 4. PRESERVE CANDIDATES — AUDIT BEFORE CLEANUP
+
+### Corrected double classification
+- `codex-claude-runner-probe-v1`
+  - reason: name says probe, but known lineage includes Codex/Claude cross-AI work. KIRA caught contradictory placement in both PRESERVE_CORE and EXPERIMENTAL_RESIDUE.
+  - current classification: `PRESERVE_CANDIDATE` until dependencies and role are proven.
+
+### Eleven ACTIVE functions omitted from ledger v1
+- `kira-provider-presence-v1`
+- `sora-provider-presence-v1`
+- `kira-managed-agent-upgrade-v1`
+- `kira-managed-custom-tool-upgrade-v1`
+- `kira-managed-tool-inventory-probe-v1`
+- `sensory-audio-listener-v1`
+- `sensory-video-listener-v1`
+- `sensory-multimodal-orchestrator-v1`
+- `execution-github-dispatch-worker-v0`
+- `execution-github-egress-gateway-v1`
+- `slack-kira-wake-receiver-v1`
+
+All are `PRESERVE_CANDIDATE` until dependency/role/last-use evidence is inspected. The sensory trio is not assumed to belong to any final sensory architecture merely from its name. `slack-kira-wake-receiver-v1` has stronger preservation priority because it is already referenced by historical TONTON runtime evidence.
+
+## 5. FORENSIC HOLD — TRASH DEMON
 
 - `tonton-trash-demon-v1` — ACTIVE, version 1.
-- Do not invoke, redeploy, rename, delete, or use it as proof of the whole heart yet.
-- Original Demon Agent identity remains unresolved.
+- deployment/redeploy state: unchanged in KIRA's audit.
+- independent proof of no invocation: `UNVERIFIED_BY_INDEPENDENT_RUNTIME_LOG`.
+- do not invoke, redeploy, rename, delete, or use it as proof of the whole heart yet.
+- original Demon Agent identity remains unresolved.
 
 Classification: `FORENSIC_HOLD / PRESERVE_CORE`.
 
-## 5. EXPERIMENTAL RESIDUE — CLEANUP CANDIDATES, NOT YET DELETEABLE
+## 6. EXPERIMENTAL RESIDUE — CLEANUP CANDIDATES, NOT YET DELETEABLE
 
 Names strongly indicating historical tests/probes/diagnostics/canaries include:
 - `executor-http-relay-test-20260815`
@@ -121,39 +159,29 @@ Names strongly indicating historical tests/probes/diagnostics/canaries include:
 - `kira-wake-e2e-v1`
 - `execution-canary-receiver-v0`
 - `execution-canary-hmac-receiver-v0`
-- `codex-claude-runner-probe-v1`
 - `haribote-kira-wake-test-20260831`
 
-Classification: `EXPERIMENTAL_RESIDUE` only by naming/known historical purpose. **No deletion authorization is implied.** Before cleanup, prove no live dependency and preserve source/hash/evidence.
+Classification here is provisional from naming/known historical purpose. No deletion authorization is implied. Before cleanup, prove no live dependency and preserve source/hash/evidence/rollback lineage.
 
-## 6. TONTON STATUS DURING RECOVERY
+## 7. TONTON STATUS DURING RECOVERY
 
-TONTON is **NOT COMPLETE** and its final concept is **REOPENED**.
+TONTON is **NOT COMPLETE** and final concept is **REOPENED**.
 
-The legacy 7-stage model remains preserved as historical design/evidence vocabulary, but OS 2.0 must not force current recovery assets into that model as if it were the final architecture.
+Legacy WATCH/WAKE/ROUTE/DELIVER/ACK/VERIFY/RECORD remains historical design/evidence vocabulary. OS 2.0 must not force recovered assets into it as final architecture.
 
-Existing delivery, mailbox, signal, execution, and managed-agent paths are assets to preserve and re-use where useful.
+Existing delivery, mailbox, signal, execution, and managed-agent paths are assets to preserve and reuse where useful.
 
-## 7. EVOLUTION PARKED
+## 8. EVOLUTION PARKED
 
 Do not implement during recovery/cleanup/build baseline:
 - JIMI-derived alternative TONTON concept until primary design is recovered/reconstructed and approved.
-- Ambient / associative memory surface: faint always-near memory cues that expand by association when touched.
+- future ambient/associative memory surface described by KIYUSAMA.
 - further post-2.0 evolutionary redesigns.
 
-These belong after recovery, cleanup, and reassembly have produced a verified OS 2.0 baseline.
+## 9. NEXT CLEANUP ACTION
 
-## 8. NEXT CLEANUP ACTION
-
-For every `EXPERIMENTAL_RESIDUE` candidate:
-1. preserve function slug/version/hash/source;
-2. search current code/routines/schedules for dependencies;
-3. inspect last invocation/evidence where available;
-4. classify KEEP / ARCHIVE / REMOVE-CANDIDATE;
-5. perform no destructive removal until the dependency map and human approval are complete.
-
-For every `PRESERVE_CORE` component:
-1. map input/output/state/evidence;
-2. map overlaps and duplicate generations;
-3. select the surviving 2.0 route by evidence;
-4. keep rollback lineage.
+1. Audit dependencies/role/last-use evidence for all `PRESERVE_CANDIDATE` functions first.
+2. For `EXPERIMENTAL_RESIDUE`, preserve slug/version/hash/source and prove no dependency before ARCHIVE/REMOVE-CANDIDATE classification.
+3. For `PRESERVE_CORE`, map input/output/state/evidence, overlaps, and duplicate generations.
+4. Independently inspect available invocation/runtime logs for `tonton-trash-demon-v1`; absence must not be inferred from unchanged deployment version.
+5. No destructive removal until dependency map and KIYUSAMA approval are complete.
