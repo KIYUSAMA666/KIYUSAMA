@@ -1,0 +1,132 @@
+{
+  "system": "KIYUSAMA OS 2.0",
+  "version": "2.0-assembly-2026-09-06",
+  "authority": "KIYUSAMA",
+  "status": "ACTIVE_BUILD",
+  "boot_policy": {
+    "mode": "CONTINUE_FROM_VERIFIED_STATE",
+    "sequence": [
+      "RETRIEVE_LAST_CANONICAL_STATE",
+      "INTEGRITY_FRESHNESS_CHECK",
+      "RECOVER_CURRENT_CONTEXT",
+      "VERIFY_TOOLS_CONNECTIONS",
+      "RESUME_FROM_NEXT_ACTION",
+      "RECORD_CAUSAL_DIFF"
+    ],
+    "forbidden": [
+      "ASSUME_NOTHING_EXISTS",
+      "REBUILD_FROM_ZERO_WITHOUT_EVIDENCE",
+      "PROMOTE_UNVERIFIED_MEMORY_TO_FACT"
+    ]
+  },
+  "roles": {
+    "KIYUSAMA": ["ROOT_AUTHORITY", "FINAL_DECISION", "HUMAN_APPROVAL"],
+    "SORA": ["STRATEGY", "INTEGRATION", "COMMAND", "ASSEMBLY"],
+    "KIRA": ["INDEPENDENT_AUDIT", "COUNTER_THEORY", "VERIFICATION"],
+    "KUMO": ["RECORD", "MEMORY", "PROVENANCE", "RETRIEVAL"],
+    "YOGA": ["OVERSIGHT", "DIAGNOSIS", "GATEKEEPER"],
+    "CODEX_WORKER_POOL": ["CHECK", "MONITOR", "ATTACK", "DIG", "IMPLEMENT", "DOUBLE_ATTACK", "S_LANE", "K_LANE"]
+  },
+  "tonton": {
+    "contract_version": "7-stage-canonical",
+    "stages": [
+      {"order": 1, "name": "WATCH", "state": "CANONICAL_DESIGN"},
+      {"order": 2, "name": "WAKE", "state": "CANONICAL_DESIGN"},
+      {"order": 3, "name": "ROUTE", "state": "CANONICAL_DESIGN"},
+      {"order": 4, "name": "DELIVER", "state": "CANONICAL_DESIGN"},
+      {"order": 5, "name": "ACK", "state": "PARTIAL_LEGACY_IMPLEMENTATION_STOPPED"},
+      {"order": 6, "name": "VERIFY", "state": "CANONICAL_DESIGN"},
+      {"order": 7, "name": "RECORD", "state": "CANONICAL_DESIGN"}
+    ],
+    "next_action": "MAP_STAGES_TO_CURRENT_VERIFIED_RUNTIME_OBJECTS"
+  },
+  "memory_loop": {
+    "sequence": ["WRITE", "STORE", "SEARCH", "RETRIEVE", "VERIFY", "USE", "WRITE_BACK"],
+    "required_state_fields": [
+      "subject",
+      "state",
+      "previous_state",
+      "cause",
+      "evidence_ref",
+      "version",
+      "freshness",
+      "source",
+      "verification_status",
+      "salience",
+      "next_action"
+    ],
+    "principle": "MEMORY_MUST_PRESERVE_CAUSAL_HISTORY"
+  },
+  "infrastructure": {
+    "github": {
+      "repo": "KIYUSAMA666/KIYUSAMA",
+      "purpose": ["SOURCE", "CODE", "SPEC", "EVIDENCE"]
+    },
+    "supabase": {
+      "project_id": "zdypjilutgxjsneultqj",
+      "purpose": ["COMMON_MEMORY", "AUDIT_LOG", "RUNTIME_STATE", "EDGE_FUNCTIONS"]
+    }
+  },
+  "known_active_components": [
+    "ai-signal-receiver-v1",
+    "kira-signal-executor-v1",
+    "sora-signal-executor-v1",
+    "codex-openai-proxy-v1",
+    "codex-task-bridge-v1",
+    "codex-k-openai-proxy-v1",
+    "kira-managed-agent-wake-v1",
+    "kira-managed-wake-executor-v1",
+    "codex-claude-runner-probe-v1",
+    "claude-lane-executor-v1",
+    "tonton-trash-demon-v1"
+  ],
+  "trash_demon": {
+    "preservation_state": "FROZEN_PRESERVE_FIRST",
+    "launcher": "tonton-trash-demon-v1",
+    "launcher_observed_status": "ACTIVE",
+    "original_agent_identity": "UNVERIFIED",
+    "reactivation_allowed": false,
+    "reactivation_gate": [
+      "IDENTIFY_ORIGINAL_AGENT",
+      "PRESERVE_AGENT_CONFIG",
+      "PRESERVE_ENVIRONMENT_TOOLS_PERMISSIONS",
+      "CORRELATE_HISTORICAL_ACTIVITY_SIGNATURE",
+      "NON_DESTRUCTIVE_ONE_SHOT_APPROVAL"
+    ]
+  },
+  "codex_fabric": {
+    "model": "MOVABLE_WORKER_POOL",
+    "verified_historical_patterns": [
+      "SORA_COMMON_MEMORY_CODEX_SORA_QA",
+      "S_LANE",
+      "K_LANE",
+      "CROSS_MONITOR",
+      "CODEX_TO_CLAUDE_FORWARD"
+    ],
+    "fixed_instance_count": "UNVERIFIED",
+    "routing_rule": "ATTACH_DETACH_MOVE_BY_ROUTE_WITH_TRACE"
+  },
+  "independent_counter_lane": {
+    "required": true,
+    "principle": "AGGREGATOR_SHALL_NOT_AUDIT_ITSELF",
+    "security_rule": "AUTHORIZED_BOUNDARIES_ONLY"
+  },
+  "evidence_rules": [
+    "TWO_AI_CHECK_WHERE_APPROPRIATE",
+    "EVIDENCE_LINEAGE_REQUIRED",
+    "EVIDENCE_FRESHNESS_REQUIRED",
+    "RECOUNT_MUST_BE_REPRODUCIBLE",
+    "NO_NEW_EVIDENCE_NO_RETRY_CREDIT",
+    "NODE_EDGE_LOOP_ABSENCE"
+  ],
+  "assembly_phases": [
+    "A_FREEZE_AND_INVENTORY",
+    "B_CANONICAL_CONTRACT_MAP",
+    "C_MEMORY_CONTINUATION",
+    "D_CODEX_WORKER_FABRIC",
+    "E_INDEPENDENT_COUNTER_LANE",
+    "F_TONTON_E2E",
+    "G_TRASH_DEMON_REACTIVATION"
+  ],
+  "current_next_action": "MAP_TONTON_7_STAGES_TO_EXISTING_FUNCTIONS_TABLES_EVENTS_AND_EVIDENCE"
+}
