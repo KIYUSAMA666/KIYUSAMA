@@ -1,6 +1,7 @@
 export * from './memory-continuation.js';
 export * from './memory-engine.js';
 export * from './recovery-gate.js';
+export * from './signal-bus.js';
 export * from './core-interface.js';
 export * from './worker-fabric.js';
 export * from './counter-lane.js';
