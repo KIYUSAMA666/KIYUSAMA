@@ -1,14 +1,17 @@
 # KIYUSAMA OS 2.0 — RECOVERY / COMPLETION LOCK
 
 Date: 2026-09-06
-Authority: KIYUSAMA
 Status: ALL LOCKED UNTIL OS 2.0 COMPLETION
 
-## KIYUSAMA DIRECTIVE
+## CONSTRUCTION PRINCIPLE
 
 **完成までオールロック。興味はその先にしかあらず。**
 
-The recovery findings are accepted, but no destructive cleanup or runtime mutation is authorized before KIYUSAMA OS 2.0 is assembled, verified, and explicitly unlocked by KIYUSAMA.
+During construction, this is not operated as “KIYUSAMA gives orders and the others wait.” SORA, KIRA, CODEX, KUMO and the other authorized lanes are expected to exercise the authority already delegated to them and keep moving within the current safety/evidence locks.
+
+Reason: the practical enemy is memory loss and context loss across AI sessions. Work must advance while the evidence, causal history, and current state are still recoverable. Repeatedly stopping to redefine hierarchy during construction adds little value and has repeatedly caused loss of momentum and reconstruction loops.
+
+**Formal long-term governance, authority hierarchy, permanent locks, and final decision rules are intentionally deferred until OS 2.0 is complete.** Build first; then define the durable governance system from the completed reality rather than from an unfinished system.
 
 ## 1. PRESERVE CORE — LOCKED
 
@@ -85,9 +88,10 @@ Allowed:
 - preservation documentation;
 - branch-only OS 2.0 construction and contracts/tests/docs that do not mutate production runtime;
 - independent KIRA audit and CODEX analysis;
-- reassembly planning using recovered assets.
+- reassembly planning using recovered assets;
+- autonomous progress by each authorized lane inside the existing locks, without waiting for repeated human micro-instructions.
 
-Locked until explicit KIYUSAMA unlock after OS 2.0 completion:
+Locked until explicit post-completion governance decision:
 - DELETE / archive removal;
 - production DB task-state mutation/finalization;
 - Edge Function redeploy/removal;
@@ -97,7 +101,20 @@ Locked until explicit KIYUSAMA unlock after OS 2.0 completion:
 - production merge;
 - post-2.0 evolution modifications.
 
-## 8. PHASE STATE
+## 8. MEMORY-LOSS OPERATING RULE
+
+The delegated-authority model exists because SORA/KIRA/CODEX/KUMO and other AI lanes can lose conversational context, model-local state, or working memory between sessions.
+
+Therefore during construction:
+1. do not wait for hierarchy ceremony when the next safe action is already within delegated authority;
+2. capture evidence, decisions, causal state, and continuation points while they are still fresh;
+3. prefer parallel progress plus independent audit over serial request/response waiting;
+4. never convert temporary construction authority into permanent governance by accident;
+5. after OS 2.0 is complete, design the permanent authority and decision system deliberately from the finished system.
+
+This rule exists to avoid repeating the historical pattern: important structure is discovered or built, context is later lost, and the team is forced to rediscover its own work.
+
+## 9. PHASE STATE
 
 ```text
 RECOVERY       = LOCKED
@@ -107,7 +124,7 @@ REASSEMBLY     = ACTIVE
 OS 2.0         = BUILD UNTIL COMPLETE
 PRODUCTION     = ALL LOCKED
 EVOLUTION      = PARKED UNTIL 2.0 COMPLETE
-FINAL UNLOCK   = KIYUSAMA ONLY
+GOVERNANCE     = DEFINE AFTER 2.0 COMPLETION
 ```
 
-The objective is now completion, not further fascination with the recovered wreckage. Preserve it, build with it, finish 2.0, then move to the territory KIYUSAMA actually wants to explore.
+The objective is now completion, not hierarchy design. Preserve what matters, keep building while memory is alive, finish OS 2.0, then create the durable rules together from the completed system.
