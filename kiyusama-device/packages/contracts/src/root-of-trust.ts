@@ -1,0 +1,1 @@
+export interface TrustAnchor{anchor_id:string;kind:'HUMAN'|'REPOSITORY'|'DATABASE'|'PROVIDER';ref:string;status:'TRUSTED'|'REVOKED'|'UNKNOWN'}export function isTrustedAnchor(a:TrustAnchor){return a.anchor_id.trim()!==''&&a.ref.trim()!==''&&a.status==='TRUSTED'}
