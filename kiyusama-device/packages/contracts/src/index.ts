@@ -73,30 +73,8 @@ export function validateLegacyTontonStageRecord(input: unknown): ValidationResul
 }
 export function isValidLegacyTontonStageRecord(input: unknown): input is LegacyTontonStageRecord { return validateLegacyTontonStageRecord(input).ok; }
 
-// KIYUSAMA OS 2.0 causal memory continuation contract.
-export const MEMORY_VERIFICATION_STATUSES = ['VERIFIED', 'PARTIAL', 'INFERRED', 'UNKNOWN', 'CONTRADICTED'] as const;
-export type MemoryVerificationStatus = (typeof MEMORY_VERIFICATION_STATUSES)[number];
-export const MEMORY_SALIENCE_LEVELS = ['CORE', 'HIGH', 'NORMAL', 'LOW'] as const;
-export type MemorySalience = (typeof MEMORY_SALIENCE_LEVELS)[number];
-export interface MemoryContinuationRecord {
-  schema_version: 'kiyusama-memory/2.0-draft1'; memory_id: string; subject: string; state: string; previous_state: string | null; cause: string;
-  evidence_refs: string[]; version: number; freshness_at: string; source: string; verification_status: MemoryVerificationStatus; salience: MemorySalience;
-  next_action: string; recorded_at: string;
-}
-export function validateMemoryContinuationRecord(input: unknown): ValidationResult<MemoryContinuationRecord> {
-  const issues: ValidationIssue[] = [];
-  if (!isRecord(input)) return { ok: false, issues: [{ path: '$', message: 'must be an object' }] };
-  if (input.schema_version !== 'kiyusama-memory/2.0-draft1') issues.push({ path: 'schema_version', message: 'must equal kiyusama-memory/2.0-draft1' });
-  for (const key of ['memory_id', 'subject', 'state', 'cause', 'source', 'next_action'] as const) if (!isNonEmptyString(input[key])) issues.push({ path: key, message: 'must be a non-empty string' });
-  if (!(input.previous_state === null || isNonEmptyString(input.previous_state))) issues.push({ path: 'previous_state', message: 'must be a non-empty string or null' });
-  if (!(Array.isArray(input.evidence_refs) && input.evidence_refs.every(isNonEmptyString))) issues.push({ path: 'evidence_refs', message: 'must be an array of non-empty strings' });
-  if (!(typeof input.version === 'number' && Number.isInteger(input.version) && input.version >= 1)) issues.push({ path: 'version', message: 'must be an integer >= 1' });
-  if (!isRfc3339(input.freshness_at)) issues.push({ path: 'freshness_at', message: 'must be RFC3339' }); if (!isRfc3339(input.recorded_at)) issues.push({ path: 'recorded_at', message: 'must be RFC3339' });
-  if (!MEMORY_VERIFICATION_STATUSES.includes(input.verification_status as MemoryVerificationStatus)) issues.push({ path: 'verification_status', message: `must be one of: ${MEMORY_VERIFICATION_STATUSES.join(', ')}` });
-  if (!MEMORY_SALIENCE_LEVELS.includes(input.salience as MemorySalience)) issues.push({ path: 'salience', message: `must be one of: ${MEMORY_SALIENCE_LEVELS.join(', ')}` });
-  const verification = MEMORY_VERIFICATION_STATUSES.includes(input.verification_status as MemoryVerificationStatus) ? input.verification_status as MemoryVerificationStatus : null;
-  if (verification === 'VERIFIED' && Array.isArray(input.evidence_refs) && input.evidence_refs.length === 0) issues.push({ path: 'evidence_refs', message: 'VERIFIED memory requires evidence' });
-  if (verification === 'UNKNOWN' && Array.isArray(input.evidence_refs) && input.evidence_refs.length > 0) issues.push({ path: 'verification_status', message: 'UNKNOWN cannot carry evidence as if verified; use PARTIAL/INFERRED when evidence exists' });
-  return issues.length ? { ok: false, issues } : { ok: true, value: input as unknown as MemoryContinuationRecord };
-}
-export function isValidMemoryContinuationRecord(input: unknown): input is MemoryContinuationRecord { return validateMemoryContinuationRecord(input).ok; }
+// Memory continuation is implemented in memory-continuation.ts. Re-export it here so
+// index.js remains the single compatibility entry point without a second validator/schema.
+export * from './memory-continuation.js';
+export * from './core-interface.js';
+export * from './worker-fabric.js';
