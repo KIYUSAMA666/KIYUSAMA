@@ -1,12 +1,19 @@
-# TONTON 7-STAGE RUNTIME MAP — 2026-09-06
+# TONTON LEGACY 7-STAGE RUNTIME MAP — 2026-09-06
 
-Status: VERIFIED MAPPING BASELINE / NO RUNTIME MUTATION
+Status: VERIFIED LEGACY MAPPING / TONTON 2.0 CONCEPT NOT LOCKED / NO RUNTIME MUTATION
 
-This document maps the canonical TONTON 7-stage design to existing verified runtime objects. It does not claim that every listed object is currently healthy end-to-end.
+This document maps the historical seven-stage TONTON design to existing verified runtime objects. It is a preservation/evidence map, not a declaration that the seven-stage model is the final TONTON 2.0 architecture.
+
+Important correction:
+- KIYUSAMA has explicitly stated that TONTON is still incomplete.
+- Existing delivery/message paths are already capable of reaching destinations.
+- A later JIMI/Gemini discussion challenged the assumption that TONTON must be modeled as a literal shoulder-tap/wake interaction.
+- The exact JIMI proposal has not yet been recovered from primary evidence in this assembly pass.
+- Therefore the seven stages below remain LEGACY_REFERENCE only until compared with the recovered JIMI alternative.
 
 ## WATCH
 
-Purpose: detect a new event or condition.
+Purpose in the legacy model: detect a new event or condition.
 
 Verified existing objects / evidence:
 - `gmail-pubsub-adapter-v1` — external Gmail event adapter exists and is ACTIVE.
@@ -18,7 +25,7 @@ Status: MULTIPLE LEGACY WATCH SOURCES EXIST.
 
 ## WAKE
 
-Purpose: transition the target from waiting/idle into active processing.
+Purpose in the legacy model: transition the target from waiting/idle into active processing.
 
 Verified existing objects / evidence:
 - `kira-managed-agent-wake-v1` — ACTIVE Edge Function.
@@ -28,7 +35,10 @@ Verified existing objects / evidence:
 - `AI_KIRA_MANAGED_WAKE_SENT` — managed-agent wake evidence exists.
 - `common_memory.kira_managed_agent_runtime_v1` — runtime state holder exists.
 
-Status: IMPLEMENTED IN MULTIPLE LEGACY LANES.
+Critical distinction:
+These objects prove that mechanisms named or behaving as wake exist in legacy lanes. They do NOT prove that the final TONTON concept requires a separate WAKE stage, nor that the desired KIYUSAMA experience of "TONTON" has been achieved.
+
+Status: LEGACY WAKE MECHANISMS EXIST / FINAL TONTON WAKE SEMANTICS UNRESOLVED.
 
 ## ROUTE
 
@@ -43,7 +53,7 @@ Verified existing objects / evidence:
 - `MANAGED_WAKE_DUAL_ROUTE` — 27 audit events observed.
 - Codex S / K lane history and cross-monitor lane evidence.
 
-Status: IMPLEMENTED; 2.0 MUST NORMALIZE LEGACY ROUTE VARIANTS INTO ONE CONTRACT.
+Status: IMPLEMENTED IN LEGACY PATHS.
 
 ## DELIVER
 
@@ -58,7 +68,7 @@ Verified existing objects / evidence:
 - `AI_MESSAGE_ENQUEUED_V2` — 19 audit events observed.
 - `TONTON_SORA_DIRECT_OUTBOX_DISPATCH` — explicit TONTON dispatch evidence exists.
 
-Status: IMPLEMENTED IN MULTIPLE PATHS.
+Status: IMPLEMENTED IN MULTIPLE PATHS. DELIVERY ITSELF IS NOT THE MAIN MISSING PROBLEM.
 
 ## ACK
 
@@ -72,10 +82,7 @@ Verified existing objects / evidence:
 
 Status: PARTIAL / IMPLEMENTATION STOPPED.
 
-2.0 rule:
-- preserve compatibility with REPLIED terminal paths;
-- add explicit receipt/acceptance semantics where required;
-- do not falsely classify ACK as never implemented.
+Do not falsely classify ACK as never implemented.
 
 ## VERIFY
 
@@ -89,7 +96,7 @@ Verified existing objects / evidence:
 - readback/hash verification audit events such as `AUDIT_PACKAGE_DB_HASH_VERIFIED`
 - GitHub evidence lane / independent recount artifacts exist outside this map.
 
-Status: STRONG LEGACY VERIFICATION INFRASTRUCTURE EXISTS, BUT 2.0 MUST REQUIRE EXPLICIT EVIDENCE LINEAGE PER LOOP.
+Status: STRONG LEGACY VERIFICATION INFRASTRUCTURE EXISTS.
 
 ## RECORD
 
@@ -103,42 +110,31 @@ Verified existing objects / evidence:
 - COMMON MEMORY knowledge/state structures
 - context retrieval evidence through `CONTEXT_PACK_LOADED` / `CONTEXT_PACK_V2_LOADED`
 
-Status: IMPLEMENTED, BUT CAUSAL CONTINUATION FIELDS MUST BE MADE CANONICAL IN 2.0.
+Status: IMPLEMENTED, BUT CAUSAL CONTINUATION MUST REMAIN CANONICAL IN 2.0.
 
 ---
 
-# 2.0 NORMALIZATION TARGET
+# DO NOT FORCE THE OLD DIAGRAM
 
-The problem is not absence of parts. The parts already exist across different generations and paths.
-
-2.0 must create one normalized contract over them:
+The historical seven-stage flow was:
 
 ```text
-WATCH
-  -> WAKE
-  -> ROUTE
-  -> DELIVER
-  -> ACK
-  -> VERIFY
-  -> RECORD
-  -> next WATCH
+WATCH -> WAKE -> ROUTE -> DELIVER -> ACK -> VERIFY -> RECORD
 ```
 
-Each stage must emit a durable stage record with:
-- `flow_id`
-- `event_id`
-- `stage`
-- `actor`
-- `target`
-- `previous_stage`
-- `status`
-- `evidence_ref`
-- `created_at`
-- `next_stage`
-- `failure_reason` when applicable
+For KIYUSAMA OS 2.0 this is now a comparison candidate, not a locked architecture.
 
-The canonical 2.0 layer should wrap existing working components first. It should not replace working legacy internals without evidence that replacement is necessary.
+The alternative to recover is the JIMI/Gemini concept that may remove or redefine the need for a separate shoulder-tap WAKE stage by treating events as already present in a shared event/subscription fabric.
+
+Until that exact proposal is recovered:
+
+```text
+TONTON_2_0_STATUS = NOT_COMPLETE
+TONTON_CONCEPT_STATUS = REOPENED
+LEGACY_7_STAGE = PRESERVED_REFERENCE
+JIMI_ALTERNATIVE = RECOVERY_REQUIRED
+```
 
 # NEXT BUILD ACTION
 
-Create the 2.0 TONTON contract adapter / state layer that can observe and normalize these existing paths without restarting or deleting them.
+Recover the original JIMI TONTON discussion from primary/persistent evidence, compare it against this legacy runtime map, then lock the smallest correct 2.0 contract. Reuse existing delivery/routing/runtime components; do not rebuild them merely because the concept is being reconsidered.
