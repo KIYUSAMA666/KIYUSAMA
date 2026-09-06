@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{validateContextPack}from'../../dist/contracts/index.js';test('context pack is exported',()=>assert.equal(typeof validateContextPack,'function'));
