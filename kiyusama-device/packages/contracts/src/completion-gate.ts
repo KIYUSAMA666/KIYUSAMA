@@ -2,6 +2,11 @@ import { validateArtifactLineageEdge, type ArtifactLineageEdge } from './artifac
 import { resolveArtifactRecoveryView, type ArtifactMemoryRecord } from './artifact-memory.js';
 import { resolveLifecycleCurrentState, type LifecycleTransition } from './lifecycle-memory.js';
 import { recoveryGate } from './recovery-gate.js';
+import { validateMemoryContinuationRecord, type MemoryContinuationRecord } from './memory-continuation.js';
+import { validateCoreInterfaceEnvelope, type CoreInterfaceEnvelope } from './core-interface.js';
+import { validateWorkerClaim, validateWorkerResult, type WorkerClaim, type WorkerResult } from './worker-fabric.js';
+import { validateCounterAudit, type CounterAudit } from './counter-lane.js';
+import { validateTontonBoundaryEvent, validateTontonBoundaryResult, type TontonBoundaryEvent, type TontonBoundaryResult } from './tonton-boundary.js';
 
 export interface CompletionEvidence{
   contracts_pass:boolean;
@@ -31,6 +36,56 @@ export interface ArtifactCompletionInput{
   lineage_edges:ArtifactLineageEdge[];
   artifact_memory_records:ArtifactMemoryRecord[];
   lifecycle_history:LifecycleTransition[];
+}
+
+export interface IntegrationCompletionInput{
+  memory:MemoryContinuationRecord;
+  core_event:CoreInterfaceEnvelope;
+  worker_claim:WorkerClaim;
+  worker_result:WorkerResult;
+  counter_audit:CounterAudit;
+  tonton_event:TontonBoundaryEvent;
+  tonton_result:TontonBoundaryResult;
+}
+
+export function computeIntegrationPass(input:IntegrationCompletionInput):boolean{
+  try{
+    if(!validateMemoryContinuationRecord(input.memory).ok)return false;
+    if(!validateCoreInterfaceEnvelope(input.core_event).ok)return false;
+    if(!validateWorkerClaim(input.worker_claim).ok)return false;
+    if(!validateWorkerResult(input.worker_result).ok)return false;
+    if(!validateCounterAudit(input.counter_audit).ok)return false;
+    if(!validateTontonBoundaryEvent(input.tonton_event).ok)return false;
+    if(!validateTontonBoundaryResult(input.tonton_result).ok)return false;
+
+    const memoryEvidence=new Set(input.memory.evidence_refs.map(x=>x.ref));
+    if(!input.core_event.evidence_refs.some(ref=>memoryEvidence.has(ref)))return false;
+    if(input.core_event.action!=='DISPATCH')return false;
+    if(input.core_event.target_plane!=='WORKER')return false;
+    if(input.core_event.payload_ref!==input.worker_claim.input_ref)return false;
+    if(input.core_event.authority_ref!==input.worker_claim.authority_ref)return false;
+
+    if(input.worker_result.claim_id!==input.worker_claim.claim_id)return false;
+    if(input.worker_result.task_id!==input.worker_claim.task_id)return false;
+    if(input.worker_result.worker_id!==input.worker_claim.worker_id)return false;
+    if(input.worker_result.generation!==input.worker_claim.generation)return false;
+    if(input.worker_result.state!=='SUCCEEDED'||input.worker_result.output_ref===null)return false;
+
+    if(input.counter_audit.verdict!=='PASS')return false;
+    if(!input.worker_result.evidence_refs.includes(input.counter_audit.subject_ref))return false;
+
+    if(input.tonton_event.correlation_id!==input.core_event.correlation_id)return false;
+    if(input.tonton_event.payload_ref!==input.worker_result.output_ref)return false;
+    if(!input.tonton_event.evidence_refs.includes(input.counter_audit.subject_ref))return false;
+
+    if(input.tonton_result.event_id!==input.tonton_event.event_id)return false;
+    if(input.tonton_result.correlation_id!==input.tonton_event.correlation_id)return false;
+    if(input.tonton_result.outcome!=='DELIVERED')return false;
+
+    return true;
+  }catch{
+    return false;
+  }
 }
 
 export function computeArtifactCompletionEvidence(input:ArtifactCompletionInput):ArtifactCompletionEvidence{
