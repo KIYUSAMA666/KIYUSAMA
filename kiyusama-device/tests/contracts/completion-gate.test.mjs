@@ -1,7 +1,20 @@
-import test from'node:test';import assert from'node:assert/strict';import{evaluateOs2Completion}from'../../dist/contracts/completion-gate.js';
+import test from'node:test';import assert from'node:assert/strict';import{computeArtifactCompletionEvidence,evaluateOs2Completion}from'../../dist/contracts/completion-gate.js';
 const all={contracts_pass:true,integration_pass:true,kernel_boot_pass:true,memory_engine_pass:true,artifact_lifecycle_pass:true,artifact_lineage_pass:true,artifact_recovery_pass:true,retrieve_first_continuation_pass:true,worker_fabric_pass:true,counter_lane_pass:true,tonton_boundary_pass:true,destructive_lock_intact:true,production_untouched:true};
 test('completion requires every executable gate',()=>assert.equal(evaluateOs2Completion(all).complete,true));
 test('missing test evidence prevents completion claim',()=>assert.equal(evaluateOs2Completion({...all,contracts_pass:false}).complete,false));
 test('artifact recovery cannot be skipped',()=>{const r=evaluateOs2Completion({...all,artifact_recovery_pass:false});assert.equal(r.complete,false);assert.ok(r.missing.includes('artifact_recovery_pass'))});
 test('artifact lineage cannot be skipped',()=>assert.equal(evaluateOs2Completion({...all,artifact_lineage_pass:false}).complete,false));
 test('retrieve-first continuation cannot be skipped',()=>{const r=evaluateOs2Completion({...all,retrieve_first_continuation_pass:false});assert.equal(r.complete,false);assert.ok(r.missing.includes('retrieve_first_continuation_pass'))});
+
+const t1='2026-09-07T10:00:00+09:00',t2='2026-09-07T10:01:00+09:00';
+const rec=(artifact_id,version=1,verification_status='VERIFIED',recorded_at=t1)=>({schema_version:'kiyusama-memory-continuation/2.0-draft1',memory_id:`${artifact_id}-${version}`,subject:`Artifact ${artifact_id}`,state:'READY',previous_state:null,cause:'recovered',evidence_refs:[{ref:`memory:${artifact_id}:${version}`}],version,freshness_at:recorded_at,source:'COMMON_MEMORY',verification_status,salience:'CORE',next_action:'continue',recorded_at,artifact_id,transition:'BORN',observed_at:recorded_at});
+const edge={schema_version:'kiyusama-artifact-lineage/2.0-draft1',lineage_edge_id:'edge-1',parent_artifact_id:'A',child_artifact_ids:['B'],transition_type:'DECOMPOSED',evidence_refs:[{ref:'lineage:1'}],verification_status:'VERIFIED',recorded_at:t2};
+const life={lifecycle_id:'life-A',subject:'Artifact A',sequence:1,state:'BORN',previous_state:null,occurred_at:t1,actor:'SORA',cause:'created',evidence_refs:[{ref:'life:1'}],verification_status:'VERIFIED',supersedes_sequence:null};
+const validInput={artifact_id:'A',lineage_edges:[edge],artifact_memory_records:[rec('A'),rec('B')],lifecycle_history:[life]};
+
+test('artifact completion evidence is derived from real validators',()=>{const r=computeArtifactCompletionEvidence(validInput);assert.deepEqual(r,{artifact_lifecycle_pass:true,artifact_lineage_pass:true,artifact_recovery_pass:true,retrieve_first_continuation_pass:true})});
+test('empty evidence arrays fail closed',()=>{const r=computeArtifactCompletionEvidence({artifact_id:'A',lineage_edges:[],artifact_memory_records:[],lifecycle_history:[]});assert.deepEqual(r,{artifact_lifecycle_pass:false,artifact_lineage_pass:false,artifact_recovery_pass:false,retrieve_first_continuation_pass:false})});
+test('invalid lineage cannot self-assert pass',()=>{const bad={...edge,child_artifact_ids:['A']};const r=computeArtifactCompletionEvidence({...validInput,lineage_edges:[bad]});assert.equal(r.artifact_lineage_pass,false);assert.equal(r.artifact_recovery_pass,false);assert.equal(r.retrieve_first_continuation_pass,false)});
+test('broken lifecycle cannot self-assert pass',()=>{const bad={...life,sequence:2,previous_state:'BORN'};const r=computeArtifactCompletionEvidence({...validInput,lifecycle_history:[bad]});assert.equal(r.artifact_lifecycle_pass,false)});
+test('unresolved descendant fails artifact recovery',()=>{const r=computeArtifactCompletionEvidence({...validInput,artifact_memory_records:[rec('A')]});assert.equal(r.artifact_recovery_pass,false)});
+test('non-actionable recovered memory fails retrieve-first continuation',()=>{const r=computeArtifactCompletionEvidence({...validInput,artifact_memory_records:[rec('A',1,'UNKNOWN'),rec('B')]});assert.equal(r.retrieve_first_continuation_pass,false)});
