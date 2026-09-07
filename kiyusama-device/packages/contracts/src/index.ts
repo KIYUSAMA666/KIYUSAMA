@@ -1,6 +1,7 @@
 export * from './memory-continuation.js';
 export * from './memory-engine.js';
 export * from './lifecycle-memory.js';
+export * from './artifact-lineage.js';
 export * from './recovery-gate.js';
 export * from './context-pack.js';
 export * from './freshness.js';
