@@ -1,4 +1,4 @@
-import test from'node:test';import assert from'node:assert/strict';import{computeArtifactCompletionEvidence,evaluateOs2Completion}from'../../dist/contracts/completion-gate.js';
+import test from'node:test';import assert from'node:assert/strict';import{computeArtifactCompletionEvidence,computeExecutableCompletionEvidence,evaluateOs2Completion}from'../../dist/contracts/completion-gate.js';
 const all={contracts_pass:true,integration_pass:true,kernel_boot_pass:true,memory_engine_pass:true,artifact_lifecycle_pass:true,artifact_lineage_pass:true,artifact_recovery_pass:true,retrieve_first_continuation_pass:true,worker_fabric_pass:true,counter_lane_pass:true,tonton_boundary_pass:true,destructive_lock_intact:true,production_untouched:true};
 test('completion requires every executable gate',()=>assert.equal(evaluateOs2Completion(all).complete,true));
 test('missing test evidence prevents completion claim',()=>assert.equal(evaluateOs2Completion({...all,contracts_pass:false}).complete,false));
@@ -18,3 +18,22 @@ test('invalid lineage cannot self-assert pass',()=>{const bad={...edge,child_art
 test('broken lifecycle cannot self-assert pass',()=>{const bad={...life,sequence:2,previous_state:'BORN'};const r=computeArtifactCompletionEvidence({...validInput,lifecycle_history:[bad]});assert.equal(r.artifact_lifecycle_pass,false)});
 test('unresolved descendant fails artifact recovery',()=>{const r=computeArtifactCompletionEvidence({...validInput,artifact_memory_records:[rec('A')]});assert.equal(r.artifact_recovery_pass,false)});
 test('non-actionable recovered memory fails retrieve-first continuation',()=>{const r=computeArtifactCompletionEvidence({...validInput,artifact_memory_records:[rec('A',1,'UNKNOWN'),rec('B')]});assert.equal(r.retrieve_first_continuation_pass,false)});
+
+const memory=rec('M');
+const memory_transition={record:memory,after_state:'EXECUTION_VERIFIED',cause:'validated continuation',evidence_refs:[{ref:'commit:1'}],actor:'KIYUSAMA_OS_2_0',timestamp:t2,next_action:'continue from verified result',verification_status:'VERIFIED'};
+const worker_claim={schema_version:'kiyusama-worker-claim/2.0-draft1',claim_id:'cl1',task_id:'t1',worker_id:'codex-s',lane:'IMPLEMENT',generation:1,authority_ref:'auth:1',input_ref:'task:1',evidence_refs:['e1'],state:'CLAIMED',claimed_at:t1,released_at:null};
+const worker_result={schema_version:'kiyusama-worker-result/2.0-draft1',claim_id:'cl1',task_id:'t1',worker_id:'codex-s',generation:1,state:'SUCCEEDED',output_ref:'branch:1',evidence_refs:['commit:1'],error:null,completed_at:t2};
+const counter_audit={schema_version:'kiyusama-counter-audit/2.0-draft1',audit_id:'a1',subject_ref:'commit:1',producer:'CODEX-S',auditor:'KIRA',checks:['NODE','EDGE','LOOP','ABSENCE'],evidence_refs:['commit:1'],freshness_at:t2,independent_recount:true,verdict:'PASS',findings:[],audited_at:t2};
+const tonton_event={schema_version:'tonton-boundary/2.0-draft1',event_id:'out1',correlation_id:'c1',source:'WORKER',target:'MAILBOX',intent:'deliver verified result',payload_ref:'branch:1',evidence_refs:['commit:1'],created_at:t2};
+const tonton_result={schema_version:'tonton-boundary-result/2.0-draft1',event_id:'out1',correlation_id:'c1',outcome:'DELIVERED',delivery_ref:'mailbox:1',evidence_refs:['receipt:1'],state_update_ref:'memory:M:2',error:null,completed_at:t2};
+const healthy={memory:true,signal:true,execution:true,worker:true,counter:true,tonton:true,evidence:true,containment:true};
+const executableInput={kernel_health:healthy,memory_transition,worker_claim,worker_result,counter_audit,tonton_event,tonton_result};
+
+test('five executable gates are derived from existing validators',()=>assert.deepEqual(computeExecutableCompletionEvidence(executableInput),{kernel_boot_pass:true,memory_engine_pass:true,worker_fabric_pass:true,counter_lane_pass:true,tonton_boundary_pass:true}));
+test('kernel boot gate fails closed on unhealthy dependency',()=>assert.equal(computeExecutableCompletionEvidence({...executableInput,kernel_health:{...healthy,counter:false}}).kernel_boot_pass,false));
+test('memory engine gate fails closed on invalid continuation',()=>assert.equal(computeExecutableCompletionEvidence({...executableInput,memory_transition:{...memory_transition,after_state:''}}).memory_engine_pass,false));
+test('worker fabric gate rejects a validly-shaped failed result',()=>{const failed={...worker_result,state:'FAILED',output_ref:null,error:'worker failed'};assert.equal(computeExecutableCompletionEvidence({...executableInput,worker_result:failed}).worker_fabric_pass,false)});
+test('worker fabric gate rejects claim identity mismatch',()=>assert.equal(computeExecutableCompletionEvidence({...executableInput,worker_result:{...worker_result,claim_id:'other'}}).worker_fabric_pass,false));
+test('counter lane gate rejects audited FAIL verdict',()=>{const failed={...counter_audit,verdict:'FAIL',findings:['counterexample found']};assert.equal(computeExecutableCompletionEvidence({...executableInput,counter_audit:failed}).counter_lane_pass,false)});
+test('TONTON boundary gate rejects non-delivery',()=>{const rejected={...tonton_result,outcome:'REJECTED',delivery_ref:null,error:'not delivered'};assert.equal(computeExecutableCompletionEvidence({...executableInput,tonton_result:rejected}).tonton_boundary_pass,false)});
+test('TONTON boundary gate rejects mismatched correlation',()=>assert.equal(computeExecutableCompletionEvidence({...executableInput,tonton_result:{...tonton_result,correlation_id:'other'}}).tonton_boundary_pass,false));
