@@ -45,7 +45,7 @@ export function validateLifecycleTransition(x: LifecycleTransition): void {
 export function appendLifecycleTransition(history: LifecycleTransition[], next: LifecycleTransition): LifecycleTransition[] {
   validateLifecycleTransition(next);
   const ordered = [...history].sort((a,b)=>a.sequence-b.sequence);
-  const last = ordered.at(-1);
+  const last = ordered.length > 0 ? ordered[ordered.length - 1] : undefined;
   if (last) {
     if (next.lifecycle_id !== last.lifecycle_id || next.subject !== last.subject) throw new Error('LIFECYCLE_IDENTITY_MISMATCH');
     if (next.sequence !== last.sequence + 1) throw new Error('NON_CONTIGUOUS_LIFECYCLE_SEQUENCE');
@@ -60,8 +60,13 @@ export function resolveLifecycleCurrentState(history: LifecycleTransition[]): Li
   const ordered = [...history].sort((a,b)=>a.sequence-b.sequence);
   ordered.forEach(validateLifecycleTransition);
   for (let i=1;i<ordered.length;i++) {
-    if (ordered[i].sequence !== ordered[i-1].sequence + 1 || ordered[i].previous_state !== ordered[i-1].state) throw new Error('BROKEN_LIFECYCLE_CHAIN');
-    if (Date.parse(ordered[i].occurred_at) < Date.parse(ordered[i-1].occurred_at)) throw new Error('LIFECYCLE_TIME_REGRESSION');
+    const current = ordered[i];
+    const previous = ordered[i-1];
+    if (!current || !previous) throw new Error('BROKEN_LIFECYCLE_CHAIN');
+    if (current.sequence !== previous.sequence + 1 || current.previous_state !== previous.state) throw new Error('BROKEN_LIFECYCLE_CHAIN');
+    if (Date.parse(current.occurred_at) < Date.parse(previous.occurred_at)) throw new Error('LIFECYCLE_TIME_REGRESSION');
   }
-  return { current: ordered[ordered.length-1], history: ordered };
+  const current = ordered[ordered.length - 1];
+  if (!current) throw new Error('EMPTY_LIFECYCLE');
+  return { current, history: ordered };
 }
