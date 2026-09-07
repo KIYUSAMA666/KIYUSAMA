@@ -59,10 +59,13 @@ export function resolveLifecycleCurrentState(history: LifecycleTransition[]): Li
   if (history.length === 0) throw new Error('EMPTY_LIFECYCLE');
   const ordered = [...history].sort((a,b)=>a.sequence-b.sequence);
   ordered.forEach(validateLifecycleTransition);
+  const first = ordered[0];
+  if (!first || first.sequence !== 1 || first.previous_state !== null) throw new Error('INVALID_LIFECYCLE_ORIGIN');
   for (let i=1;i<ordered.length;i++) {
     const current = ordered[i];
     const previous = ordered[i-1];
     if (!current || !previous) throw new Error('BROKEN_LIFECYCLE_CHAIN');
+    if (current.lifecycle_id !== previous.lifecycle_id || current.subject !== previous.subject) throw new Error('LIFECYCLE_IDENTITY_MISMATCH');
     if (current.sequence !== previous.sequence + 1 || current.previous_state !== previous.state) throw new Error('BROKEN_LIFECYCLE_CHAIN');
     if (Date.parse(current.occurred_at) < Date.parse(previous.occurred_at)) throw new Error('LIFECYCLE_TIME_REGRESSION');
   }
