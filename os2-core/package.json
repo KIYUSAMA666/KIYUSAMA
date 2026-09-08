@@ -1,0 +1,12 @@
+{
+  "name": "kiyusama-os2-core",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "rm -rf dist && tsc -p tsconfig.json && node --test dist/tests/current-state.test.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
