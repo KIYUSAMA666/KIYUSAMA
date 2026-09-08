@@ -1,0 +1,26 @@
+name: OS2 Core CI
+
+on:
+  pull_request:
+    paths:
+      - 'os2-core/**'
+      - '.github/workflows/os2-core-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  current-state-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: os2-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: os2-core/package-lock.json
+      - run: npm install --ignore-scripts
+      - run: npm test
