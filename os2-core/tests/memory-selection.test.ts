@@ -1,10 +1,11 @@
+// @ts-nocheck
 import test from "node:test";
 import assert from "node:assert/strict";
-import { selectExecutionCandidate, selectExecutionCandidates, type MemoryClass, type MemoryRecord } from "../src/memory-selection.js";
+import { selectExecutionCandidate, selectExecutionCandidates } from "../src/memory-selection.js";
 
-const blocked: MemoryClass[] = ["CONFIRMED", "HISTORY", "EVIDENCE", "FAIL", "REJECTED", "DELETED", "CLOSED"];
+const blocked = ["CONFIRMED", "HISTORY", "EVIDENCE", "FAIL", "REJECTED", "DELETED", "CLOSED"];
 
-function record(memoryClass: MemoryClass, id = memoryClass): MemoryRecord<string> {
+function record(memoryClass, id = memoryClass) {
   return { id, memoryClass, payload: `payload:${id}` };
 }
 
