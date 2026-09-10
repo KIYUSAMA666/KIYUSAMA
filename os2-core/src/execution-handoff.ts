@@ -45,6 +45,10 @@ export type ExecutionHandoffHoldReason =
   | "INVALID_LIFETIME"
   | "EXPIRED";
 
+export type ExecutionHandoffDecision =
+  | { status: "READY" }
+  | { status: "HOLD"; reason: ExecutionHandoffHoldReason };
+
 function sameRefBinding(a: RequiredEvidenceRefBinding, b: RequiredEvidenceRefBinding): boolean {
   return a.id === b.id && a.expectedVersion === b.expectedVersion && a.path === b.path;
 }
