@@ -59,8 +59,8 @@ export function evaluateExecutionHandoff(
   }
 
   if (
-    request.sourceStateId !== input.snapshot.stateId ||
-    request.sourceStateRevision !== input.snapshot.stateRevision
+    request.sourceStateId !== input.snapshot.identity.stateId ||
+    request.sourceStateRevision !== input.snapshot.identity.stateRevision
   ) {
     return { status: "HOLD", reason: "STATE_CHANGED" };
   }
