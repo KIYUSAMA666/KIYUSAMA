@@ -19,6 +19,7 @@ export interface DelegatedProofKey {
   proofKeyId: string;
   rootId: string;
   rootVersion: string;
+  issuerAuthorityId: string;
   proofType: string;
   algorithm: ExternalTrustAlgorithm;
   publicKeyPem: string;
@@ -50,6 +51,7 @@ export interface ExternalTrustVerificationInput {
 
 export interface VerifiedDelegatedProofKey {
   proofKeyId: string;
+  issuerAuthorityId: string;
   proofType: string;
   algorithm: ExternalTrustAlgorithm;
   publicKeyPem: string;
@@ -91,6 +93,7 @@ export type ExternalProofVerificationReason =
   | "PROOF_KEY_REVOKED"
   | "PROOF_KEY_NOT_ACTIVE"
   | "PROOF_TYPE_MISMATCH"
+  | "PROOF_AUTHORITY_MISMATCH"
   | "PROOF_SIGNATURE_INVALID";
 
 export type ExternalProofVerificationDecision =
@@ -136,6 +139,7 @@ export function canonicalDelegationPayload(key: DelegatedProofKey): string {
     proofKeyId: key.proofKeyId,
     rootId: key.rootId,
     rootVersion: key.rootVersion,
+    issuerAuthorityId: key.issuerAuthorityId,
     proofType: key.proofType,
     algorithm: key.algorithm,
     publicKeyFingerprintSha256: key.publicKeyFingerprintSha256,
@@ -194,10 +198,7 @@ export function evaluateExternalTrustRoot(
     return { status: "HOLD", reason: "ROOT_FINGERPRINT_MISMATCH" };
   }
 
-  if (
-    nowMs < rootFromMs ||
-    (rootUntilMs !== null && nowMs > rootUntilMs)
-  ) {
+  if (nowMs < rootFromMs || (rootUntilMs !== null && nowMs > rootUntilMs)) {
     return { status: "HOLD", reason: "ROOT_NOT_ACTIVE" };
   }
 
@@ -243,6 +244,7 @@ export function evaluateExternalTrustRoot(
     if (
       !nonEmpty(key.proofKeyId) ||
       seenProofKeyIds.has(key.proofKeyId) ||
+      !nonEmpty(key.issuerAuthorityId) ||
       !nonEmpty(key.proofType) ||
       !nonEmpty(key.publicKeyPem) ||
       !nonEmpty(key.publicKeyFingerprintSha256) ||
@@ -286,6 +288,7 @@ export function evaluateExternalTrustRoot(
 
     verifiedKeys.push({
       proofKeyId: key.proofKeyId,
+      issuerAuthorityId: key.issuerAuthorityId,
       proofType: key.proofType,
       algorithm: key.algorithm,
       publicKeyPem: key.publicKeyPem,
@@ -323,13 +326,20 @@ export function verifyRootSignedPayload(
 export function verifyDelegatedProof(
   context: VerifiedExternalTrustContext,
   proofKeyId: string,
+  issuerAuthorityId: string,
   proofType: string,
   payload: string,
   signatureBase64: string,
   now: string,
 ): ExternalProofVerificationDecision {
   const nowMs = parseTime(now);
-  if (nowMs === null || !nonEmpty(proofKeyId) || !nonEmpty(proofType) || !nonEmpty(payload)) {
+  if (
+    nowMs === null ||
+    !nonEmpty(proofKeyId) ||
+    !nonEmpty(issuerAuthorityId) ||
+    !nonEmpty(proofType) ||
+    !nonEmpty(payload)
+  ) {
     return { status: "HOLD", reason: "PROOF_SIGNATURE_INVALID" };
   }
 
@@ -337,6 +347,9 @@ export function verifyDelegatedProof(
   if (key === undefined) return { status: "HOLD", reason: "PROOF_KEY_NOT_TRUSTED" };
   if (key.revoked) return { status: "HOLD", reason: "PROOF_KEY_REVOKED" };
   if (key.proofType !== proofType) return { status: "HOLD", reason: "PROOF_TYPE_MISMATCH" };
+  if (key.issuerAuthorityId !== issuerAuthorityId) {
+    return { status: "HOLD", reason: "PROOF_AUTHORITY_MISMATCH" };
+  }
 
   const validFromMs = parseTime(key.validFrom);
   const validUntilMs = parseTime(key.validUntil);
