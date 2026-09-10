@@ -1,12 +1,19 @@
 import type { CurrentStateSnapshot } from "./current-state.js";
 import type { ExecutionResultEvidence } from "./execution-result-evidence.js";
+import {
+  evaluateExternalTrustRoot,
+  verifyDelegatedProof,
+  verifyRootSignedPayload,
+  type ExternalTrustVerificationInput,
+  type VerifiedExternalTrustContext,
+} from "./external-trust-root.js";
 
 /**
- * TRUST ANCHOR / PROVENANCE VERIFICATION v0.1
+ * TRUST ANCHOR / PROVENANCE VERIFICATION v0.1 + EXTERNAL TRUST ROOT integration.
  *
- * STEP1 established the contracts. STEP2 adds provider-neutral verification orchestration.
- * This pillar remains OPEN/HOLD: cryptographic/key/provider trust roots are supplied by
- * external proof adapters and are not established by this module itself.
+ * The caller no longer supplies arbitrary proof-verifier callbacks. Provenance verification
+ * validates the pinned external root, signed revocation snapshot, root-signed registry, and
+ * root-delegated Ed25519 proof keys internally before accepting any attestation.
  */
 
 export type TrustSubjectKind =
@@ -16,12 +23,6 @@ export type TrustSubjectKind =
 
 export type TrustAnchorStatus = "ACTIVE" | "REVOKED" | "HOLD";
 
-/**
- * Registry entry describing which active role/authority may attest a trust subject.
- * `authorityRole` binds the anchor to CURRENT.activeRolesAndAuthority instead of trusting
- * a free-floating authorityId string. `anchorVersion` prevents silent proof reuse after
- * rotation/replacement.
- */
 export interface TrustAnchor {
   anchorId: string;
   anchorVersion: string;
@@ -33,7 +34,6 @@ export interface TrustAnchor {
   validUntil: string | null;
 }
 
-/** Canonical subject binding carried by an attestation. */
 export interface ProvenanceSubjectBinding {
   subjectKind: TrustSubjectKind;
   subjectId: string;
@@ -44,10 +44,6 @@ export interface ProvenanceSubjectBinding {
   lineageId: string;
 }
 
-/**
- * Provider-neutral proof envelope. `proofValue` is opaque here; the selected adapter must
- * independently verify it against the exact anchor and attestation envelope.
- */
 export interface ProvenanceAttestation {
   attestationId: string;
   anchorId: string;
@@ -57,6 +53,7 @@ export interface ProvenanceAttestation {
   issuedAt: string;
   expiresAt: string | null;
   proofType: string;
+  proofKeyId: string;
   proofValue: string;
 }
 
@@ -64,28 +61,22 @@ export interface TrustAnchorRegistrySnapshot {
   registryId: string;
   registryRevision: number;
   anchors: ReadonlyArray<TrustAnchor>;
+  rootSignatureBase64: string;
 }
-
-export interface ProvenanceProofVerificationContext {
-  anchor: TrustAnchor;
-  attestation: ProvenanceAttestation;
-}
-
-export type ProvenanceProofVerifier = (
-  context: ProvenanceProofVerificationContext,
-) => boolean;
 
 export interface ProvenanceVerificationInput {
   current: CurrentStateSnapshot;
   result: ExecutionResultEvidence | null;
   registry: TrustAnchorRegistrySnapshot;
   attestations: ReadonlyArray<ProvenanceAttestation>;
-  proofVerifiers: Readonly<Record<string, ProvenanceProofVerifier>>;
+  externalTrust: ExternalTrustVerificationInput;
   now: string;
 }
 
 export type ProvenanceVerificationHoldReason =
   | "INVALID_PROVENANCE_INPUT"
+  | "EXTERNAL_TRUST_NOT_VERIFIED"
+  | "REGISTRY_SIGNATURE_INVALID"
   | "ANCHOR_NOT_FOUND"
   | "ANCHOR_NOT_ACTIVE"
   | "ANCHOR_VERSION_MISMATCH"
@@ -93,7 +84,11 @@ export type ProvenanceVerificationHoldReason =
   | "SUBJECT_BINDING_MISMATCH"
   | "ATTESTATION_EXPIRED"
   | "ATTESTATION_NOT_YET_VALID"
-  | "PROOF_UNSUPPORTED"
+  | "PROOF_KEY_NOT_TRUSTED"
+  | "PROOF_KEY_REVOKED"
+  | "PROOF_KEY_NOT_ACTIVE"
+  | "PROOF_TYPE_MISMATCH"
+  | "PROOF_AUTHORITY_MISMATCH"
   | "PROOF_INVALID"
   | "REQUIRED_ATTESTATION_MISSING";
 
@@ -103,12 +98,19 @@ export interface VerifiedProvenanceRef {
   attestationId: string;
   anchorId: string;
   anchorVersion: string;
+  proofKeyId: string;
 }
 
 export type ProvenanceVerificationDecision =
   | {
       status: "VERIFIED";
       verified: ReadonlyArray<VerifiedProvenanceRef>;
+      externalTrust: {
+        rootId: string;
+        rootVersion: string;
+        rootFingerprintSha256: string;
+        revocationSequence: number;
+      };
     }
   | {
       status: "HOLD";
@@ -138,11 +140,49 @@ function parseTime(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/**
- * Policy derivation is internal so callers cannot bypass required provenance by passing an
- * empty requirement set. Result acceptance always requires its evidence refs, independent
- * lane provenance, and verifier identity provenance.
- */
+export function canonicalTrustAnchorRegistryPayload(
+  registry: TrustAnchorRegistrySnapshot,
+): string {
+  return JSON.stringify({
+    registryId: registry.registryId,
+    registryRevision: registry.registryRevision,
+    anchors: registry.anchors.map((anchor) => ({
+      anchorId: anchor.anchorId,
+      anchorVersion: anchor.anchorVersion,
+      subjectKind: anchor.subjectKind,
+      authorityRole: anchor.authorityRole,
+      authorityId: anchor.authorityId,
+      status: anchor.status,
+      validFrom: anchor.validFrom,
+      validUntil: anchor.validUntil,
+    })),
+  });
+}
+
+export function canonicalProvenanceAttestationPayload(
+  attestation: ProvenanceAttestation,
+): string {
+  return JSON.stringify({
+    attestationId: attestation.attestationId,
+    anchorId: attestation.anchorId,
+    anchorVersion: attestation.anchorVersion,
+    issuerAuthorityId: attestation.issuerAuthorityId,
+    subject: {
+      subjectKind: attestation.subject.subjectKind,
+      subjectId: attestation.subject.subjectId,
+      subjectVersion: attestation.subject.subjectVersion,
+      subjectPath: attestation.subject.subjectPath,
+      stateId: attestation.subject.stateId,
+      stateRevision: attestation.subject.stateRevision,
+      lineageId: attestation.subject.lineageId,
+    },
+    issuedAt: attestation.issuedAt,
+    expiresAt: attestation.expiresAt,
+    proofType: attestation.proofType,
+    proofKeyId: attestation.proofKeyId,
+  });
+}
+
 export function deriveRequiredProvenanceSubjects(
   input: Pick<ProvenanceVerificationInput, "current" | "result">,
 ): RequiredProvenanceSubjects {
@@ -229,8 +269,30 @@ function subjectMatches(
   );
 }
 
+function mapExternalProofFailure(
+  reason:
+    | "PROOF_KEY_NOT_TRUSTED"
+    | "PROOF_KEY_REVOKED"
+    | "PROOF_KEY_NOT_ACTIVE"
+    | "PROOF_TYPE_MISMATCH"
+    | "PROOF_AUTHORITY_MISMATCH"
+    | "PROOF_SIGNATURE_INVALID",
+): ProvenanceVerificationHoldReason {
+  switch (reason) {
+    case "PROOF_KEY_NOT_TRUSTED":
+    case "PROOF_KEY_REVOKED":
+    case "PROOF_KEY_NOT_ACTIVE":
+    case "PROOF_TYPE_MISMATCH":
+    case "PROOF_AUTHORITY_MISMATCH":
+      return reason;
+    case "PROOF_SIGNATURE_INVALID":
+      return "PROOF_INVALID";
+  }
+}
+
 function validateAttestation(
   input: ProvenanceVerificationInput,
+  externalTrust: VerifiedExternalTrustContext,
   required: RequiredSubject,
   attestation: ProvenanceAttestation,
   nowMs: number,
@@ -241,6 +303,7 @@ function validateAttestation(
     !nonEmpty(attestation.anchorVersion) ||
     !nonEmpty(attestation.issuerAuthorityId) ||
     !nonEmpty(attestation.proofType) ||
+    !nonEmpty(attestation.proofKeyId) ||
     !nonEmpty(attestation.proofValue)
   ) {
     return "INVALID_PROVENANCE_INPUT";
@@ -251,10 +314,16 @@ function validateAttestation(
   }
 
   const anchor = input.registry.anchors.find(
-    (candidate) => candidate.anchorId === attestation.anchorId,
+    (candidate) =>
+      candidate.anchorId === attestation.anchorId &&
+      candidate.anchorVersion === attestation.anchorVersion,
   );
-  if (anchor === undefined) return "ANCHOR_NOT_FOUND";
-  if (anchor.anchorVersion !== attestation.anchorVersion) return "ANCHOR_VERSION_MISMATCH";
+  if (anchor === undefined) {
+    const sameIdExists = input.registry.anchors.some(
+      (candidate) => candidate.anchorId === attestation.anchorId,
+    );
+    return sameIdExists ? "ANCHOR_VERSION_MISMATCH" : "ANCHOR_NOT_FOUND";
+  }
   if (anchor.subjectKind !== required.kind) return "SUBJECT_BINDING_MISMATCH";
 
   if (
@@ -301,32 +370,22 @@ function validateAttestation(
     return "ATTESTATION_EXPIRED";
   }
 
-  const verifier = input.proofVerifiers[attestation.proofType];
-  if (verifier === undefined) return "PROOF_UNSUPPORTED";
-
-  try {
-    if (!verifier({ anchor, attestation })) return "PROOF_INVALID";
-  } catch {
-    return "PROOF_INVALID";
+  const proofDecision = verifyDelegatedProof(
+    externalTrust,
+    attestation.proofKeyId,
+    attestation.issuerAuthorityId,
+    attestation.proofType,
+    canonicalProvenanceAttestationPayload(attestation),
+    attestation.proofValue,
+    input.now,
+  );
+  if (proofDecision.status !== "VERIFIED") {
+    return mapExternalProofFailure(proofDecision.reason);
   }
 
   return null;
 }
 
-/**
- * Fail-closed provenance verification.
- *
- * Every internally-derived required subject must have at least one attestation that:
- *  - binds exactly to CURRENT state/revision/lineage and expected evidence version/path;
- *  - references an ACTIVE exact-version anchor;
- *  - is issued by the authority currently assigned to the anchor's role;
- *  - is inside both anchor/attestation time windows; and
- *  - passes a registered external proof verifier.
- *
- * This establishes orchestration/binding semantics only. Trust Root establishment,
- * key custody, revocation source authenticity, and provider-adapter independence remain
- * OPEN/HOLD until separately implemented and independently audited.
- */
 export function evaluateProvenanceVerification(
   input: ProvenanceVerificationInput,
 ): ProvenanceVerificationDecision {
@@ -335,9 +394,30 @@ export function evaluateProvenanceVerification(
     nowMs === null ||
     !nonEmpty(input.registry.registryId) ||
     !Number.isInteger(input.registry.registryRevision) ||
-    input.registry.registryRevision < 1
+    input.registry.registryRevision < 1 ||
+    !nonEmpty(input.registry.rootSignatureBase64)
   ) {
     return { status: "HOLD", reason: "INVALID_PROVENANCE_INPUT" };
+  }
+
+  if (input.externalTrust.now !== input.now) {
+    return { status: "HOLD", reason: "INVALID_PROVENANCE_INPUT" };
+  }
+
+  const externalTrustDecision = evaluateExternalTrustRoot(input.externalTrust);
+  if (externalTrustDecision.status !== "VERIFIED") {
+    return { status: "HOLD", reason: "EXTERNAL_TRUST_NOT_VERIFIED" };
+  }
+  const externalTrust = externalTrustDecision.context;
+
+  if (
+    !verifyRootSignedPayload(
+      externalTrust,
+      canonicalTrustAnchorRegistryPayload(input.registry),
+      input.registry.rootSignatureBase64,
+    )
+  ) {
+    return { status: "HOLD", reason: "REGISTRY_SIGNATURE_INVALID" };
   }
 
   const anchorKeys = new Set<string>();
@@ -378,7 +458,13 @@ export function evaluateProvenanceVerification(
     let accepted: ProvenanceAttestation | null = null;
 
     for (const candidate of candidates) {
-      const failure = validateAttestation(input, required, candidate, nowMs);
+      const failure = validateAttestation(
+        input,
+        externalTrust,
+        required,
+        candidate,
+        nowMs,
+      );
       if (failure === null) {
         accepted = candidate;
         break;
@@ -399,8 +485,18 @@ export function evaluateProvenanceVerification(
       attestationId: accepted.attestationId,
       anchorId: accepted.anchorId,
       anchorVersion: accepted.anchorVersion,
+      proofKeyId: accepted.proofKeyId,
     });
   }
 
-  return { status: "VERIFIED", verified };
+  return {
+    status: "VERIFIED",
+    verified,
+    externalTrust: {
+      rootId: externalTrust.rootId,
+      rootVersion: externalTrust.rootVersion,
+      rootFingerprintSha256: externalTrust.rootFingerprintSha256,
+      revocationSequence: externalTrust.revocationSequence,
+    },
+  };
 }
