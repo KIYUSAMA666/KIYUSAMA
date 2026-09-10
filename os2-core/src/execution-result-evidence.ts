@@ -37,6 +37,7 @@ export type ExecutionResultDecision =
         | "INDEPENDENT_LANE_NOT_READY"
         | "HANDOFF_MISMATCH"
         | "STATE_MISMATCH"
+        | "OBSERVED_AT_OUT_OF_WINDOW"
         | "INVALID_RESULT";
     };
 
@@ -51,14 +52,26 @@ export function evaluateExecutionResultEvidence(
 ): ExecutionResultDecision {
   const { snapshot, handoff, evidence } = input;
 
+  const observedAtMs = Date.parse(evidence.observedAt);
   if (
     !evidence.resultId.trim() ||
     !evidence.executorId.trim() ||
     !evidence.verifierId.trim() ||
     !evidence.observedAt.trim() ||
-    !Number.isFinite(Date.parse(evidence.observedAt))
+    !Number.isFinite(observedAtMs)
   ) {
     return { status: "HOLD", reason: "INVALID_RESULT" };
+  }
+
+  const issuedAtMs = Date.parse(handoff.issuedAt);
+  const expiresAtMs = Date.parse(handoff.expiresAt);
+  if (
+    !Number.isFinite(issuedAtMs) ||
+    !Number.isFinite(expiresAtMs) ||
+    observedAtMs < issuedAtMs ||
+    observedAtMs > expiresAtMs
+  ) {
+    return { status: "HOLD", reason: "OBSERVED_AT_OUT_OF_WINDOW" };
   }
 
   if (
