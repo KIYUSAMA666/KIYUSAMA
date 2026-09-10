@@ -1,4 +1,4 @@
-import type { ActionEvidenceRequirement } from "./action-evidence-requirement.js";
+import type { ActionEvidenceRequirement, RequiredEvidenceRefBinding } from "./action-evidence-requirement.js";
 import type { CapabilitySlot } from "./capability-slot.js";
 import type { CurrentStateSnapshot } from "./current-state.js";
 import type { PreExecutionGateDecision } from "./pre-execution-gate.js";
@@ -12,6 +12,12 @@ export interface ExecutionHandoffInput {
   gateDecision: PreExecutionGateDecision;
 }
 
+export interface ResultEvidencePolicy {
+  requiredRefs: ReadonlyArray<RequiredEvidenceRefBinding>;
+  verifierId: string;
+  evidenceSource: string;
+}
+
 export interface ExecutionHandoffRequest {
   handoffId: string;
   traceId: string;
@@ -22,7 +28,8 @@ export interface ExecutionHandoffRequest {
   implementationId: string;
   issuedAt: string;
   expiresAt: string;
-  evidenceRefIds: string[];
+  evidenceRefs: ReadonlyArray<RequiredEvidenceRefBinding>;
+  resultEvidencePolicy: ResultEvidencePolicy;
 }
 
 export type ExecutionHandoffHoldReason =
@@ -32,13 +39,25 @@ export type ExecutionHandoffHoldReason =
   | "HANDOFF_MISMATCH"
   | "STATE_CHANGED"
   | "EVIDENCE_NOT_VERIFIED"
+  | "EVIDENCE_BINDING_MISMATCH"
+  | "RESULT_EVIDENCE_POLICY_INVALID"
   | "INDEPENDENT_LANE_NOT_READY"
   | "INVALID_LIFETIME"
   | "EXPIRED";
 
-export type ExecutionHandoffDecision =
-  | { status: "READY" }
-  | { status: "HOLD"; reason: ExecutionHandoffHoldReason };
+function sameRefBinding(a: RequiredEvidenceRefBinding, b: RequiredEvidenceRefBinding): boolean {
+  return a.id === b.id && a.expectedVersion === b.expectedVersion && a.path === b.path;
+}
+
+function hasExactRefSet(
+  actual: ReadonlyArray<RequiredEvidenceRefBinding>,
+  required: ReadonlyArray<RequiredEvidenceRefBinding>,
+): boolean {
+  if (actual.length !== required.length) return false;
+  const ids = new Set(actual.map((ref) => ref.id));
+  if (ids.size !== actual.length) return false;
+  return required.every((requiredRef) => actual.some((actualRef) => sameRefBinding(actualRef, requiredRef)));
+}
 
 export function evaluateExecutionHandoff(
   input: ExecutionHandoffInput,
@@ -90,17 +109,34 @@ export function evaluateExecutionHandoff(
     return { status: "HOLD", reason: "INDEPENDENT_LANE_NOT_READY" };
   }
 
-  const requiredRefIds = input.actionEvidenceRequirement.requiredRefIds;
+  const requiredRefs = input.actionEvidenceRequirement.requiredRefs;
+  if (!hasExactRefSet(request.evidenceRefs, requiredRefs)) {
+    return { status: "HOLD", reason: "EVIDENCE_BINDING_MISMATCH" };
+  }
+
+  for (const requiredRef of requiredRefs) {
+    const matchedRef = input.snapshot.confirmedRefIndex.find((ref) => ref.id === requiredRef.id);
+    if (matchedRef === undefined || matchedRef.status !== "VERIFIED") {
+      return { status: "HOLD", reason: "EVIDENCE_NOT_VERIFIED" };
+    }
+    if (
+      matchedRef.expectedVersion !== requiredRef.expectedVersion ||
+      matchedRef.path !== requiredRef.path
+    ) {
+      return { status: "HOLD", reason: "EVIDENCE_BINDING_MISMATCH" };
+    }
+  }
+
+  const resultPolicy = request.resultEvidencePolicy;
+  const resultIds = new Set(resultPolicy.requiredRefs.map((ref) => ref.id));
   if (
-    request.evidenceRefIds.length !== requiredRefIds.length ||
-    !requiredRefIds.every((requiredRefId) => request.evidenceRefIds.includes(requiredRefId)) ||
-    !requiredRefIds.every((requiredRefId) =>
-      input.snapshot.confirmedRefIndex.some(
-        (ref) => ref.id === requiredRefId && ref.status === "VERIFIED",
-      ),
-    )
+    !resultPolicy.verifierId.trim() ||
+    !resultPolicy.evidenceSource.trim() ||
+    resultPolicy.requiredRefs.length === 0 ||
+    resultIds.size !== resultPolicy.requiredRefs.length ||
+    resultPolicy.requiredRefs.some((ref) => !ref.id.trim())
   ) {
-    return { status: "HOLD", reason: "EVIDENCE_NOT_VERIFIED" };
+    return { status: "HOLD", reason: "RESULT_EVIDENCE_POLICY_INVALID" };
   }
 
   const issuedAtMs = Date.parse(request.issuedAt);
