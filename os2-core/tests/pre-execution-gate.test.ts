@@ -52,8 +52,10 @@ function baseInput() {
   };
 }
 
-test("1 normal conditions with satisfied action evidence allow", () => {
-  assert.deepEqual(evaluatePreExecutionGate(baseInput()), { status: "ALLOW" });
+const ALLOW = { status: "ALLOW", actionId: "NA-1", stateId: "CS-1", stateRevision: 1 };
+
+test("1 normal conditions with satisfied action evidence allow with decision binding", () => {
+  assert.deepEqual(evaluatePreExecutionGate(baseInput()), ALLOW);
 });
 
 test("2 non-current action holds", () => {
@@ -109,7 +111,7 @@ test("7 required capability mismatch holds", () => {
   assert.deepEqual(evaluatePreExecutionGate(input), { status: "HOLD", reason: "CAPABILITY_MISMATCH" });
 });
 
-test("8 verified bound matching capability with satisfied action evidence allows", () => {
+test("8 verified bound matching capability with satisfied action evidence allows with decision binding", () => {
   const input = {
     ...baseInput(),
     requiredCapabilityId: "CAP-A",
@@ -126,5 +128,5 @@ test("8 verified bound matching capability with satisfied action evidence allows
       },
     },
   };
-  assert.deepEqual(evaluatePreExecutionGate(input), { status: "ALLOW" });
+  assert.deepEqual(evaluatePreExecutionGate(input), ALLOW);
 });
