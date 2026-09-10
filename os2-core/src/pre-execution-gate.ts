@@ -1,6 +1,7 @@
 import { assertSnapshotInvariant, type CurrentStateSnapshot } from "./current-state.js";
 import type { CandidateDecision } from "./memory-selection.js";
 import type { CapabilitySlot } from "./capability-slot.js";
+import type { ActionEvidenceDecision } from "./action-evidence-requirement.js";
 
 export type PreExecutionHoldReason =
   | "INVALID_SNAPSHOT"
@@ -8,12 +9,14 @@ export type PreExecutionHoldReason =
   | "NON_CURRENT_MEMORY"
   | "UNVERIFIED_ACTIVE_GUARD"
   | "CAPABILITY_NOT_READY"
-  | "CAPABILITY_MISMATCH";
+  | "CAPABILITY_MISMATCH"
+  | "ACTION_EVIDENCE_NOT_SATISFIED";
 
 export interface PreExecutionGateInput<T = unknown> {
   actionId: string;
   snapshot: CurrentStateSnapshot;
   memoryDecision: CandidateDecision<T>;
+  actionEvidenceDecision: ActionEvidenceDecision;
   requiredCapabilityId?: string;
   capabilitySlot?: CapabilitySlot;
 }
@@ -41,6 +44,10 @@ export function evaluatePreExecutionGate<T = unknown>(
 
   if (input.snapshot.activeGuards.some((guard) => guard.refConfirmed !== "VERIFIED")) {
     return { status: "HOLD", reason: "UNVERIFIED_ACTIVE_GUARD" };
+  }
+
+  if (input.actionEvidenceDecision.status !== "SATISFIED") {
+    return { status: "HOLD", reason: "ACTION_EVIDENCE_NOT_SATISFIED" };
   }
 
   if (input.requiredCapabilityId !== undefined) {
