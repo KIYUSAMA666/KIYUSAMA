@@ -22,7 +22,12 @@ export interface PreExecutionGateInput<T = unknown> {
 }
 
 export type PreExecutionGateDecision =
-  | { status: "ALLOW" }
+  | {
+      status: "ALLOW";
+      actionId: string;
+      stateId: string;
+      stateRevision: number;
+    }
   | { status: "HOLD"; reason: PreExecutionHoldReason };
 
 export function evaluatePreExecutionGate<T = unknown>(
@@ -60,5 +65,10 @@ export function evaluatePreExecutionGate<T = unknown>(
     }
   }
 
-  return { status: "ALLOW" };
+  return {
+    status: "ALLOW",
+    actionId: input.actionId,
+    stateId: input.snapshot.identity.stateId,
+    stateRevision: input.snapshot.identity.stateRevision,
+  };
 }

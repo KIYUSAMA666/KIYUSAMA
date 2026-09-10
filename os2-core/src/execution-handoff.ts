@@ -3,6 +3,8 @@ import type { CapabilitySlot } from "./capability-slot.js";
 import type { CurrentStateSnapshot } from "./current-state.js";
 import type { PreExecutionGateDecision } from "./pre-execution-gate.js";
 
+export const MAX_EXECUTION_HANDOFF_TTL_MS = 60 * 60 * 1000;
+
 export interface ExecutionHandoffInput {
   snapshot: CurrentStateSnapshot;
   actionEvidenceRequirement: ActionEvidenceRequirement;
@@ -18,16 +20,20 @@ export interface ExecutionHandoffRequest {
   sourceStateRevision: number;
   capabilityId: string;
   implementationId: string;
+  issuedAt: string;
   expiresAt: string;
   evidenceRefIds: string[];
 }
 
 export type ExecutionHandoffHoldReason =
   | "GATE_NOT_ALLOWED"
+  | "GATE_DECISION_MISMATCH"
   | "CAPABILITY_NOT_READY"
   | "HANDOFF_MISMATCH"
   | "STATE_CHANGED"
   | "EVIDENCE_NOT_VERIFIED"
+  | "INDEPENDENT_LANE_NOT_READY"
+  | "INVALID_LIFETIME"
   | "EXPIRED";
 
 export type ExecutionHandoffDecision =
@@ -41,6 +47,17 @@ export function evaluateExecutionHandoff(
 ): ExecutionHandoffDecision {
   if (input.gateDecision.status !== "ALLOW") {
     return { status: "HOLD", reason: "GATE_NOT_ALLOWED" };
+  }
+
+  if (
+    input.gateDecision.actionId !== request.actionId ||
+    input.gateDecision.stateId !== request.sourceStateId ||
+    input.gateDecision.stateRevision !== request.sourceStateRevision ||
+    input.gateDecision.actionId !== input.snapshot.nextActionSingle.actionId ||
+    input.gateDecision.stateId !== input.snapshot.identity.stateId ||
+    input.gateDecision.stateRevision !== input.snapshot.identity.stateRevision
+  ) {
+    return { status: "HOLD", reason: "GATE_DECISION_MISMATCH" };
   }
 
   const binding = input.capabilitySlot.binding;
@@ -65,6 +82,14 @@ export function evaluateExecutionHandoff(
     return { status: "HOLD", reason: "STATE_CHANGED" };
   }
 
+  if (
+    input.actionEvidenceRequirement.requireIndependentLane &&
+    (input.snapshot.independentLaneHealth.status !== "VERIFIED" ||
+      input.snapshot.independentLaneHealth.evidenceVerdict !== "SUFFICIENT")
+  ) {
+    return { status: "HOLD", reason: "INDEPENDENT_LANE_NOT_READY" };
+  }
+
   const requiredRefIds = input.actionEvidenceRequirement.requiredRefIds;
   if (
     request.evidenceRefIds.length !== requiredRefIds.length ||
@@ -78,9 +103,21 @@ export function evaluateExecutionHandoff(
     return { status: "HOLD", reason: "EVIDENCE_NOT_VERIFIED" };
   }
 
+  const issuedAtMs = Date.parse(request.issuedAt);
   const expiresAtMs = Date.parse(request.expiresAt);
   const nowMs = Date.parse(now);
-  if (!Number.isFinite(expiresAtMs) || !Number.isFinite(nowMs) || expiresAtMs <= nowMs) {
+  if (
+    !Number.isFinite(issuedAtMs) ||
+    !Number.isFinite(expiresAtMs) ||
+    !Number.isFinite(nowMs) ||
+    issuedAtMs > nowMs ||
+    expiresAtMs <= issuedAtMs ||
+    expiresAtMs - issuedAtMs > MAX_EXECUTION_HANDOFF_TTL_MS
+  ) {
+    return { status: "HOLD", reason: "INVALID_LIFETIME" };
+  }
+
+  if (expiresAtMs <= nowMs) {
     return { status: "HOLD", reason: "EXPIRED" };
   }
 

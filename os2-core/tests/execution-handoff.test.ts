@@ -1,7 +1,7 @@
 // @ts-nocheck
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateExecutionHandoff } from "../src/execution-handoff.js";
+import { evaluateExecutionHandoff, MAX_EXECUTION_HANDOFF_TTL_MS } from "../src/execution-handoff.js";
 
 function snapshot() {
   return {
@@ -56,7 +56,7 @@ function input() {
       requireIndependentLane: false,
     },
     capabilitySlot: capabilitySlot(),
-    gateDecision: { status: "ALLOW" },
+    gateDecision: { status: "ALLOW", actionId: "NA-1", stateId: "CS-1", stateRevision: 1 },
   };
 }
 
@@ -69,6 +69,7 @@ function request() {
     sourceStateRevision: 1,
     capabilityId: "CAP-A",
     implementationId: "IMPL-1",
+    issuedAt: "2026-09-10T16:00:00+09:00",
     expiresAt: "2026-09-10T17:00:00+09:00",
     evidenceRefIds: ["REF-1"],
   };
@@ -98,16 +99,16 @@ test("4 action or capability binding mismatch holds", () => {
   assert.deepEqual(evaluateExecutionHandoff(input(), r, NOW), { status: "HOLD", reason: "HANDOFF_MISMATCH" });
 });
 
-test("5 changed source stateId holds", () => {
+test("5 changed source stateId is rejected by gate decision binding", () => {
   const r = request();
   r.sourceStateId = "CS-OLD";
-  assert.deepEqual(evaluateExecutionHandoff(input(), r, NOW), { status: "HOLD", reason: "STATE_CHANGED" });
+  assert.deepEqual(evaluateExecutionHandoff(input(), r, NOW), { status: "HOLD", reason: "GATE_DECISION_MISMATCH" });
 });
 
-test("6 changed source stateRevision holds", () => {
+test("6 changed source stateRevision is rejected by gate decision binding", () => {
   const r = request();
   r.sourceStateRevision = 0;
-  assert.deepEqual(evaluateExecutionHandoff(input(), r, NOW), { status: "HOLD", reason: "STATE_CHANGED" });
+  assert.deepEqual(evaluateExecutionHandoff(input(), r, NOW), { status: "HOLD", reason: "GATE_DECISION_MISMATCH" });
 });
 
 test("7 missing required evidence holds", () => {
@@ -129,5 +130,38 @@ test("9 expired handoff holds", () => {
 });
 
 test("10 invalid evaluation time fails closed", () => {
-  assert.deepEqual(evaluateExecutionHandoff(input(), request(), "not-a-time"), { status: "HOLD", reason: "EXPIRED" });
+  assert.deepEqual(evaluateExecutionHandoff(input(), request(), "not-a-time"), { status: "HOLD", reason: "INVALID_LIFETIME" });
+});
+
+test("11 gate decision action binding mismatch holds", () => {
+  const i = input();
+  i.gateDecision.actionId = "NA-OLD";
+  assert.deepEqual(evaluateExecutionHandoff(i, request(), NOW), { status: "HOLD", reason: "GATE_DECISION_MISMATCH" });
+});
+
+test("12 gate decision state binding mismatch holds", () => {
+  const i = input();
+  i.gateDecision.stateRevision = 0;
+  assert.deepEqual(evaluateExecutionHandoff(i, request(), NOW), { status: "HOLD", reason: "GATE_DECISION_MISMATCH" });
+});
+
+test("13 required independent lane not ready holds", () => {
+  const i = input();
+  i.actionEvidenceRequirement.requireIndependentLane = true;
+  i.snapshot.independentLaneHealth.status = "UNVERIFIED";
+  i.snapshot.independentLaneHealth.evidenceVerdict = "INSUFFICIENT";
+  assert.deepEqual(evaluateExecutionHandoff(i, request(), NOW), { status: "HOLD", reason: "INDEPENDENT_LANE_NOT_READY" });
+});
+
+test("14 excessive TTL holds", () => {
+  const r = request();
+  r.expiresAt = new Date(Date.parse(r.issuedAt) + MAX_EXECUTION_HANDOFF_TTL_MS + 1).toISOString();
+  assert.deepEqual(evaluateExecutionHandoff(input(), r, NOW), { status: "HOLD", reason: "INVALID_LIFETIME" });
+});
+
+test("15 issuedAt in the future holds", () => {
+  const r = request();
+  r.issuedAt = "2026-09-10T16:45:00+09:00";
+  r.expiresAt = "2026-09-10T17:00:00+09:00";
+  assert.deepEqual(evaluateExecutionHandoff(input(), r, NOW), { status: "HOLD", reason: "INVALID_LIFETIME" });
 });
