@@ -32,6 +32,9 @@ export type ExecutionResultDecision =
         | "RESULT_CONFLICT"
         | "RESULT_UNKNOWN"
         | "SELF_VERIFICATION_FORBIDDEN"
+        | "RESULT_EVIDENCE_MISSING"
+        | "RESULT_EVIDENCE_UNVERIFIED"
+        | "INDEPENDENT_LANE_NOT_READY"
         | "HANDOFF_MISMATCH"
         | "STATE_MISMATCH"
         | "INVALID_RESULT";
@@ -79,6 +82,27 @@ export function evaluateExecutionResultEvidence(
 
   if (evidence.executorId === evidence.verifierId) {
     return { status: "HOLD", reason: "SELF_VERIFICATION_FORBIDDEN" };
+  }
+
+  if (
+    snapshot.independentLaneHealth.status !== "VERIFIED" ||
+    snapshot.independentLaneHealth.evidenceVerdict !== "SUFFICIENT"
+  ) {
+    return { status: "HOLD", reason: "INDEPENDENT_LANE_NOT_READY" };
+  }
+
+  if (evidence.evidenceRefIds.length === 0) {
+    return { status: "HOLD", reason: "RESULT_EVIDENCE_MISSING" };
+  }
+
+  for (const evidenceRefId of evidence.evidenceRefIds) {
+    const matchedRef = snapshot.confirmedRefIndex.find((ref) => ref.id === evidenceRefId);
+    if (matchedRef === undefined) {
+      return { status: "HOLD", reason: "RESULT_EVIDENCE_MISSING" };
+    }
+    if (matchedRef.status !== "VERIFIED") {
+      return { status: "HOLD", reason: "RESULT_EVIDENCE_UNVERIFIED" };
+    }
   }
 
   if (evidence.verification === "CONFLICT") {
