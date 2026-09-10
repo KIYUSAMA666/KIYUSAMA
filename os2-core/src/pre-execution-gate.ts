@@ -46,6 +46,10 @@ export function evaluatePreExecutionGate<T = unknown>(
     return { status: "HOLD", reason: "UNVERIFIED_ACTIVE_GUARD" };
   }
 
+  if (input.actionEvidenceDecision.status !== "SATISFIED") {
+    return { status: "HOLD", reason: "ACTION_EVIDENCE_NOT_SATISFIED" };
+  }
+
   if (input.requiredCapabilityId !== undefined) {
     const slot = input.capabilitySlot;
     if (slot === undefined || slot.status !== "BOUND" || slot.binding === null || !slot.binding.verified) {
