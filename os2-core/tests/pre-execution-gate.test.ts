@@ -39,15 +39,20 @@ function currentMemoryDecision() {
   };
 }
 
+function satisfiedActionEvidenceDecision() {
+  return { status: "SATISFIED" };
+}
+
 function baseInput() {
   return {
     actionId: "NA-1",
     snapshot: snapshot(),
     memoryDecision: currentMemoryDecision(),
+    actionEvidenceDecision: satisfiedActionEvidenceDecision(),
   };
 }
 
-test("1 normal conditions allow", () => {
+test("1 normal conditions with satisfied action evidence allow", () => {
   assert.deepEqual(evaluatePreExecutionGate(baseInput()), { status: "ALLOW" });
 });
 
@@ -69,7 +74,13 @@ test("4 unverified active guard holds", () => {
   assert.deepEqual(evaluatePreExecutionGate(input), { status: "HOLD", reason: "UNVERIFIED_ACTIVE_GUARD" });
 });
 
-test("5 required capability not ready holds", () => {
+test("5 unsatisfied action evidence holds", () => {
+  const input = baseInput();
+  input.actionEvidenceDecision = { status: "HOLD", reason: "REQUIRED_REF_MISSING", refId: "REF-1" };
+  assert.deepEqual(evaluatePreExecutionGate(input), { status: "HOLD", reason: "ACTION_EVIDENCE_NOT_SATISFIED" });
+});
+
+test("6 required capability not ready holds", () => {
   const input = {
     ...baseInput(),
     requiredCapabilityId: "CAP-A",
@@ -78,7 +89,7 @@ test("5 required capability not ready holds", () => {
   assert.deepEqual(evaluatePreExecutionGate(input), { status: "HOLD", reason: "CAPABILITY_NOT_READY" });
 });
 
-test("6 required capability mismatch holds", () => {
+test("7 required capability mismatch holds", () => {
   const input = {
     ...baseInput(),
     requiredCapabilityId: "CAP-A",
@@ -98,7 +109,7 @@ test("6 required capability mismatch holds", () => {
   assert.deepEqual(evaluatePreExecutionGate(input), { status: "HOLD", reason: "CAPABILITY_MISMATCH" });
 });
 
-test("7 verified bound matching capability allows", () => {
+test("8 verified bound matching capability with satisfied action evidence allows", () => {
   const input = {
     ...baseInput(),
     requiredCapabilityId: "CAP-A",
