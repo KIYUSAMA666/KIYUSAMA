@@ -34,6 +34,9 @@ export type ExecutionResultDecision =
         | "SELF_VERIFICATION_FORBIDDEN"
         | "RESULT_EVIDENCE_MISSING"
         | "RESULT_EVIDENCE_UNVERIFIED"
+        | "RESULT_EVIDENCE_BINDING_MISMATCH"
+        | "VERIFIER_BINDING_MISMATCH"
+        | "EVIDENCE_SOURCE_MISMATCH"
         | "INDEPENDENT_LANE_NOT_READY"
         | "HANDOFF_MISMATCH"
         | "STATE_MISMATCH"
@@ -97,6 +100,14 @@ export function evaluateExecutionResultEvidence(
     return { status: "HOLD", reason: "SELF_VERIFICATION_FORBIDDEN" };
   }
 
+  if (evidence.verifierId !== handoff.resultEvidencePolicy.verifierId) {
+    return { status: "HOLD", reason: "VERIFIER_BINDING_MISMATCH" };
+  }
+
+  if (snapshot.independentLaneHealth.evidenceSource !== handoff.resultEvidencePolicy.evidenceSource) {
+    return { status: "HOLD", reason: "EVIDENCE_SOURCE_MISMATCH" };
+  }
+
   if (
     snapshot.independentLaneHealth.status !== "VERIFIED" ||
     snapshot.independentLaneHealth.evidenceVerdict !== "SUFFICIENT"
@@ -104,17 +115,35 @@ export function evaluateExecutionResultEvidence(
     return { status: "HOLD", reason: "INDEPENDENT_LANE_NOT_READY" };
   }
 
+  const requiredResultRefs = handoff.resultEvidencePolicy.requiredRefs;
   if (evidence.evidenceRefIds.length === 0) {
     return { status: "HOLD", reason: "RESULT_EVIDENCE_MISSING" };
   }
 
-  for (const evidenceRefId of evidence.evidenceRefIds) {
-    const matchedRef = snapshot.confirmedRefIndex.find((ref) => ref.id === evidenceRefId);
+  const actualIds = new Set(evidence.evidenceRefIds);
+  const requiredIds = new Set(requiredResultRefs.map((ref) => ref.id));
+  if (
+    actualIds.size !== evidence.evidenceRefIds.length ||
+    requiredIds.size !== requiredResultRefs.length ||
+    evidence.evidenceRefIds.length !== requiredResultRefs.length ||
+    !requiredResultRefs.every((requiredRef) => actualIds.has(requiredRef.id))
+  ) {
+    return { status: "HOLD", reason: "RESULT_EVIDENCE_BINDING_MISMATCH" };
+  }
+
+  for (const requiredRef of requiredResultRefs) {
+    const matchedRef = snapshot.confirmedRefIndex.find((ref) => ref.id === requiredRef.id);
     if (matchedRef === undefined) {
       return { status: "HOLD", reason: "RESULT_EVIDENCE_MISSING" };
     }
     if (matchedRef.status !== "VERIFIED") {
       return { status: "HOLD", reason: "RESULT_EVIDENCE_UNVERIFIED" };
+    }
+    if (
+      matchedRef.expectedVersion !== requiredRef.expectedVersion ||
+      matchedRef.path !== requiredRef.path
+    ) {
+      return { status: "HOLD", reason: "RESULT_EVIDENCE_BINDING_MISMATCH" };
     }
   }
 
