@@ -46,7 +46,13 @@ export type ExecutionHandoffHoldReason =
   | "EXPIRED";
 
 export type ExecutionHandoffDecision =
-  | { status: "READY" }
+  | {
+      status: "READY";
+      handoffId: string;
+      actionId: string;
+      sourceStateId: string;
+      sourceStateRevision: number;
+    }
   | { status: "HOLD"; reason: ExecutionHandoffHoldReason };
 
 function sameRefBinding(a: RequiredEvidenceRefBinding, b: RequiredEvidenceRefBinding): boolean {
@@ -161,5 +167,11 @@ export function evaluateExecutionHandoff(
     return { status: "HOLD", reason: "EXPIRED" };
   }
 
-  return { status: "READY" };
+  return {
+    status: "READY",
+    handoffId: request.handoffId,
+    actionId: request.actionId,
+    sourceStateId: request.sourceStateId,
+    sourceStateRevision: request.sourceStateRevision,
+  };
 }
