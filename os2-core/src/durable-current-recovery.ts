@@ -55,10 +55,11 @@ export function recoverDurableCurrent(
     return { status: "HOLD", reason: "MALFORMED_CURRENT" };
   }
 
+  const candidate = current as unknown as CurrentStateSnapshot;
   let snapshot: CurrentStateSnapshot;
   try {
-    assertSnapshotInvariant(current as CurrentStateSnapshot);
-    snapshot = current as CurrentStateSnapshot;
+    assertSnapshotInvariant(candidate);
+    snapshot = candidate;
   } catch {
     return { status: "HOLD", reason: "MALFORMED_CURRENT" };
   }
