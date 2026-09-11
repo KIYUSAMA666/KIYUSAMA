@@ -41,8 +41,24 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalJson(value[key])]),
+    );
+  }
+  return value;
+}
+
 function exactJsonEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return JSON.stringify(canonicalJson(a)) === JSON.stringify(canonicalJson(b));
 }
 
 function normalizeDecision(
@@ -74,8 +90,9 @@ function normalizeDecision(
     return { status: "HOLD", reason: "BACKEND_FAILURE" };
   }
 
-  // A remote backend may not acknowledge a different payload than the one that
-  // passed validation. This closes response substitution across the async seam.
+  // JSONB does not preserve object key insertion order. Canonicalize only object
+  // keys so a semantically identical acknowledgement passes, while value, array,
+  // and content substitutions remain fail-closed.
   if (!exactJsonEqual(decision.current, command.nextCurrent)) {
     return { status: "HOLD", reason: "BACKEND_FAILURE" };
   }
