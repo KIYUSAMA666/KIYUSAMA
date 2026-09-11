@@ -20,9 +20,9 @@ function current(revision = 5) {
     },
     mainLineTask: { taskId: "ML-1", description: "test" },
     nextActionSingle: { actionId: "NA-1", description: "write current" },
-    activeRolesAndAuthority: {},
-    activeGuards: [],
-    confirmedRefIndex: [],
+    activeRolesAndAuthority: { COMMANDER: "SORA", AUDITOR: "KIRA" },
+    activeGuards: [{ guardId: "G-1", rule: "verified only", refConfirmed: "VERIFIED" }],
+    confirmedRefIndex: [{ id: "REF-1", status: "VERIFIED", expectedVersion: "v1", path: "evidence/ref-1.json" }],
     independentLaneHealth: {
       status: "VERIFIED",
       evidenceVerdict: "SUFFICIENT",
@@ -171,4 +171,70 @@ test("9 atomic commit projection preserves CAS, consumption IDs, and next CURREN
     consumeHandoffId: "HO-1",
     nextCurrent: r.candidate,
   });
+});
+
+test("10 E10 activeRolesAndAuthority substitution is HOLD", () => {
+  const r = request();
+  r.candidate.activeRolesAndAuthority = { ...r.candidate.activeRolesAndAuthority, AUDITOR: "ATTACKER" };
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "IMMUTABLE_STATE_MUTATION" });
+});
+
+test("11 E10 nextActionSingle substitution is HOLD", () => {
+  const r = request();
+  r.candidate.nextActionSingle = { actionId: "ATTACK-ACTION", description: "attacker controlled" };
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "IMMUTABLE_STATE_MUTATION" });
+});
+
+test("12 humanDecisionFinal cannot be silently changed", () => {
+  const r = request();
+  r.candidate.humanDecisionFinal = { ...r.candidate.humanDecisionFinal, shortDirective: "attacker directive" };
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "IMMUTABLE_STATE_MUTATION" });
+});
+
+test("13 mainLineTask cannot be silently changed", () => {
+  const r = request();
+  r.candidate.mainLineTask = { taskId: "ATTACK-TASK", description: "attacker task" };
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "IMMUTABLE_STATE_MUTATION" });
+});
+
+test("14 activeGuards cannot be silently changed", () => {
+  const r = request();
+  r.candidate.activeGuards = [];
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "IMMUTABLE_STATE_MUTATION" });
+});
+
+test("15 confirmedRefIndex cannot be silently changed", () => {
+  const r = request();
+  r.candidate.confirmedRefIndex = [{ id: "ATTACK-REF", status: "VERIFIED", expectedVersion: "v999", path: "attack" }];
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "IMMUTABLE_STATE_MUTATION" });
+});
+
+test("16 independentLaneHealth cannot be silently changed", () => {
+  const r = request();
+  r.candidate.independentLaneHealth = { ...r.candidate.independentLaneHealth, evidenceSource: "ATTACKER" };
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "IMMUTABLE_STATE_MUTATION" });
+});
+
+test("17 schemaVersion cannot be silently changed", () => {
+  const r = request();
+  r.candidate.identity.schemaVersion = "999";
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "IMMUTABLE_STATE_MUTATION" });
+});
+
+test("18 candidate must satisfy snapshot invariant", () => {
+  const r = request();
+  r.candidate.humanDecisionFinal.sourceAuthority = "ATTACKER";
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "INVALID_WRITE_BACK" });
+});
+
+test("19 candidate effectiveAt cannot move backwards", () => {
+  const r = request();
+  r.candidate.identity.effectiveAt = "2026-09-10T17:59:59+09:00";
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "INVALID_WRITE_BACK" });
+});
+
+test("20 candidate may advance effectiveAt while preserving parent-owned semantic fields", () => {
+  const r = request();
+  r.candidate.identity.effectiveAt = "2026-09-10T18:31:00+09:00";
+  assert.equal(evaluateWriteBack(input(), r).status, "READY");
 });
