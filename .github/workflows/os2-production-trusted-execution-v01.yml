@@ -1,32 +1,14 @@
-name: OS2 Production Trusted Execution v0.1
+name: OS2 Production Trusted Execution v0.1 (closed)
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "os2-core/**"
-      - ".github/workflows/os2-production-trusted-execution-v01.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  production-trusted-execution:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor == 'KIYUSAMA666'
+  production-trusted-execution-closed:
+    if: ${{ false }}
     runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: os2-core
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: os2-core/package-lock.json
-      - run: npm install --ignore-scripts
-      - run: npm test
-      - name: Execute isolated production trusted commit
-        run: node scripts/production-trusted-execution-v01.mjs
+      - run: echo "OS2 Production Trusted Execution v0.1 is closed after successful production proof."
