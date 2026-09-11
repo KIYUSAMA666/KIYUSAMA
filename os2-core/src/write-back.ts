@@ -1,4 +1,4 @@
-import type { CurrentStateSnapshot } from "./current-state.js";
+import { assertSnapshotInvariant, type CurrentStateSnapshot } from "./current-state.js";
 import type { ExecutionHandoffRequest } from "./execution-handoff.js";
 import type { ExecutionResultEvidence } from "./execution-result-evidence.js";
 
@@ -8,9 +8,12 @@ import type { ExecutionResultEvidence } from "./execution-result-evidence.js";
  * 2. Bind the new CURRENT back to the accepted result/handoff that justified it.
  * 3. Carry explicit consumption keys so the same result/handoff cannot authorize a second write.
  * 4. Carry an expected-current compare target for storage-layer CAS.
+ * 5. Fail closed if the candidate mutates parent-owned semantic fields that are not explicitly
+ *    authorized by the result/handoff contract.
  *
- * Trust Anchor / Provenance Verification is intentionally NOT solved here.
- * It remains a separate OPEN/HOLD pillar and must not be inferred from these bindings.
+ * Candidate-integrity rule:
+ * The current v0.1 result/handoff contracts authorize a new revision and a new effectiveAt only.
+ * All other CURRENT semantic fields remain parent-owned and must be inherited exactly.
  */
 
 export interface WriteBackParentBinding {
@@ -38,11 +41,6 @@ export interface WriteBackProvenance {
   source: WriteBackSourceBinding;
 }
 
-/**
- * Candidate CURRENT produced by WRITE BACK.
- * The base CurrentStateSnapshot contract remains unchanged/locked;
- * WRITE BACK adds explicit ancestry/source provenance to the produced candidate.
- */
 export type WriteBackCurrentStateCandidate = CurrentStateSnapshot & {
   writeBack: WriteBackProvenance;
 };
@@ -65,15 +63,11 @@ export type WriteBackDecision =
         | "PARENT_MISMATCH"
         | "SOURCE_BINDING_MISMATCH"
         | "REVISION_CONFLICT"
+        | "IMMUTABLE_STATE_MUTATION"
         | "RESULT_ALREADY_CONSUMED"
         | "HANDOFF_ALREADY_CONSUMED";
     };
 
-/**
- * Storage contract required by WRITE BACK v0.1.
- * Implementations must make current-revision comparison, consumption claims,
- * and CURRENT replacement one atomic commit boundary (CAS-equivalent).
- */
 export interface WriteBackAtomicCommit {
   expectedCurrent: WriteBackCasExpectation;
   consumeResultId: string;
@@ -89,6 +83,36 @@ export interface WriteBackEvaluationInput {
   consumedHandoffIds: ReadonlySet<string>;
 }
 
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableJson(entry)).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const record = value as Readonly<Record<string, unknown>>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function parentOwnedStateMatches(
+  current: CurrentStateSnapshot,
+  candidate: WriteBackCurrentStateCandidate,
+): boolean {
+  return (
+    candidate.identity.schemaVersion === current.identity.schemaVersion &&
+    stableJson(candidate.humanDecisionFinal) === stableJson(current.humanDecisionFinal) &&
+    stableJson(candidate.mainLineTask) === stableJson(current.mainLineTask) &&
+    stableJson(candidate.nextActionSingle) === stableJson(current.nextActionSingle) &&
+    stableJson(candidate.activeRolesAndAuthority) === stableJson(current.activeRolesAndAuthority) &&
+    stableJson(candidate.activeGuards) === stableJson(current.activeGuards) &&
+    stableJson(candidate.confirmedRefIndex) === stableJson(current.confirmedRefIndex) &&
+    stableJson(candidate.independentLaneHealth) === stableJson(current.independentLaneHealth)
+  );
+}
+
 /**
  * Pure pre-commit validation for WRITE BACK v0.1.
  *
@@ -101,6 +125,22 @@ export function evaluateWriteBack(
   request: WriteBackRequest,
 ): WriteBackDecision {
   const { current, handoff, result } = input;
+
+  try {
+    assertSnapshotInvariant(request.candidate);
+  } catch {
+    return { status: "HOLD", reason: "INVALID_WRITE_BACK" };
+  }
+
+  const candidateEffectiveAtMs = Date.parse(request.candidate.identity.effectiveAt);
+  const currentEffectiveAtMs = Date.parse(current.identity.effectiveAt);
+  if (
+    !Number.isFinite(candidateEffectiveAtMs) ||
+    !Number.isFinite(currentEffectiveAtMs) ||
+    candidateEffectiveAtMs < currentEffectiveAtMs
+  ) {
+    return { status: "HOLD", reason: "INVALID_WRITE_BACK" };
+  }
 
   if (
     !request.writeBackId.trim() ||
@@ -161,6 +201,10 @@ export function evaluateWriteBack(
     request.candidate.identity.scope !== current.identity.scope
   ) {
     return { status: "HOLD", reason: "REVISION_CONFLICT" };
+  }
+
+  if (!parentOwnedStateMatches(current, request.candidate)) {
+    return { status: "HOLD", reason: "IMMUTABLE_STATE_MUTATION" };
   }
 
   return { status: "READY", request };
