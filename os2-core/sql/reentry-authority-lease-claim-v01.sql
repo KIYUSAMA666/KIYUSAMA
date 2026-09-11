@@ -1,4 +1,6 @@
 create table if not exists os2_reentry_v01.authority_lease_claims (
+  -- The replay/concurrency boundary is authority_key, not lease_id.
+  -- Multiple leaseIds derived from one re-entry authority must collide here.
   authority_key text primary key,
   lease_id text not null unique,
   action_id text not null,
@@ -15,6 +17,8 @@ create table if not exists os2_reentry_v01.authority_lease_claims (
   check (attestation_observed_at <= issued_at),
   check (issued_at < expires_at),
   check (expires_at <= reentry_authority_expires_at),
+  -- Defense in depth: even if a caller attempted to manufacture a different
+  -- authority_key string, the underlying re-entry authority tuple is also unique.
   unique (
     action_id,
     state_id,
@@ -51,6 +55,7 @@ declare
   v_reentry_authority_expires_at timestamptz;
   v_issued_at timestamptz;
   v_expires_at timestamptz;
+  -- Caller claimedAt is intentionally ignored. Database time is authoritative.
   v_claimed_at timestamptz := clock_timestamp();
   v_current os2_storage_v01.current_state%rowtype;
   v_attestation os2_reentry_v01.attestations%rowtype;
@@ -96,6 +101,7 @@ begin
     return jsonb_build_object('status','BINDING_MISMATCH');
   end;
 
+  -- Validate the semantic authorityKey structure produced by buildAuthorityKey().
   if v_state_revision < 1 or v_commit_sequence < 0 or
      jsonb_typeof(v_authority_json) <> 'array' or jsonb_array_length(v_authority_json) <> 8 or
      v_authority_json->>0 is distinct from 'OS2_REENTRY_AUTHORITY_V01' or
@@ -118,6 +124,7 @@ begin
     return jsonb_build_object('status','BINDING_MISMATCH');
   end if;
 
+  -- Re-check durable attestation at the atomic claim boundary.
   select * into v_attestation
   from os2_reentry_v01.attestations
   where attestation_id = v_attestation_id;
@@ -133,6 +140,7 @@ begin
     return jsonb_build_object('status','BINDING_MISMATCH');
   end if;
 
+  -- Prevent stale lease execution after CURRENT has already advanced.
   select * into v_current
   from os2_storage_v01.current_state
   where singleton_id = true;
