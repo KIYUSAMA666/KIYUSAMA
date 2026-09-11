@@ -21,7 +21,8 @@ export interface WriteBackRequest {
 export type WriteBackDecision =
   | { status: "READY"; request: WriteBackRequest }
   | { status: "HOLD"; reason:
-      | "INVALID_WRITE_BACK" | "HANDOFF_NOT_READY" | "RESULT_NOT_ACCEPTED"
+      | "INVALID_WRITE_BACK" | "HANDOFF_NOT_READY" | "HANDOFF_DECISION_MISMATCH"
+      | "RESULT_NOT_ACCEPTED" | "RESULT_DECISION_MISMATCH"
       | "INVALID_CANDIDATE" | "PROTECTED_STATE_MUTATION" | "PARENT_MISMATCH"
       | "SOURCE_BINDING_MISMATCH" | "REVISION_CONFLICT"
       | "RESULT_ALREADY_CONSUMED" | "HANDOFF_ALREADY_CONSUMED" };
@@ -45,12 +46,26 @@ export interface WriteBackEvaluationInput {
 
 function sameValue(a: unknown, b: unknown): boolean { return JSON.stringify(a) === JSON.stringify(b); }
 
-/** WRITE BACK consumes upstream decisions; it must not recreate authority from raw data. */
+/** WRITE BACK consumes upstream decisions and binds each decision to the exact raw object it authorizes. */
 export function evaluateWriteBack(input: WriteBackEvaluationInput, request: WriteBackRequest): WriteBackDecision {
   const { current, handoff, result } = input;
 
   if (input.handoffDecision.status !== "READY") return { status: "HOLD", reason: "HANDOFF_NOT_READY" };
+  if (
+    input.handoffDecision.handoffId !== handoff.handoffId ||
+    input.handoffDecision.actionId !== handoff.actionId ||
+    input.handoffDecision.sourceStateId !== handoff.sourceStateId ||
+    input.handoffDecision.sourceStateRevision !== handoff.sourceStateRevision
+  ) return { status: "HOLD", reason: "HANDOFF_DECISION_MISMATCH" };
+
   if (input.resultDecision.status !== "ACCEPTED") return { status: "HOLD", reason: "RESULT_NOT_ACCEPTED" };
+  if (
+    input.resultDecision.resultId !== result.resultId ||
+    input.resultDecision.handoffId !== result.handoffId ||
+    input.resultDecision.sourceStateId !== result.sourceStateId ||
+    input.resultDecision.sourceStateRevision !== result.sourceStateRevision ||
+    input.resultDecision.outcome !== result.outcome
+  ) return { status: "HOLD", reason: "RESULT_DECISION_MISMATCH" };
 
   try { assertSnapshotInvariant(request.candidate); }
   catch { return { status: "HOLD", reason: "INVALID_CANDIDATE" }; }
