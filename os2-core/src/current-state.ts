@@ -39,13 +39,35 @@ export type SnapshotSelection =
   | { status: "STATE_CONFLICT"; reason: string }
   | { status: "LINEAGE_CONFLICT"; reason: string };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalJson(value[key])]),
+    );
+  }
+  return value;
+}
+
+function exactJsonEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(canonicalJson(a)) === JSON.stringify(canonicalJson(b));
+}
+
 export function selectCurrentSnapshot(a: CurrentStateSnapshot, b: CurrentStateSnapshot): SnapshotSelection {
   if (a.identity.scope !== b.identity.scope) return { status: "STATE_CONFLICT", reason: "scope mismatch" };
   if (a.identity.lineageId !== b.identity.lineageId) {
     return { status: "LINEAGE_CONFLICT", reason: "automatic lineage selection forbidden" };
   }
   if (a.identity.stateRevision === b.identity.stateRevision) {
-    if (JSON.stringify(a) !== JSON.stringify(b)) {
+    // Durable JSON stores such as PostgreSQL jsonb may reorder object keys.
+    // Treat object-key order as non-semantic while preserving array order and all values.
+    if (!exactJsonEqual(a, b)) {
       return { status: "STATE_CONFLICT", reason: "same revision with different payload" };
     }
     return { status: "SELECTED", snapshot: a };
