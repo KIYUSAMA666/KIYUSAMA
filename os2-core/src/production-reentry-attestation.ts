@@ -86,7 +86,7 @@ function parseAttestation(raw: unknown): DurableRecoveryReentryAttestation | nul
     !nonEmpty(raw.evidenceJobId)
   ) return null;
 
-  return structuredClone(raw) as DurableRecoveryReentryAttestation;
+  return structuredClone(raw) as unknown as DurableRecoveryReentryAttestation;
 }
 
 export function createSupabaseJsRecoveryReentryAttestationClient(
