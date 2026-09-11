@@ -51,6 +51,19 @@ export interface StorageAtomicCommitBackend {
   compareConsumeAndSwap(command: StorageAtomicCommitCommand): StorageAtomicCommitDecision;
 }
 
+/**
+ * Production/network backends use the exact same atomic command contract but may
+ * resolve asynchronously. The trusted orchestrator accepts either contract without
+ * weakening validation or caller binding.
+ */
+export interface AsyncStorageAtomicCommitBackend {
+  compareConsumeAndSwap(command: StorageAtomicCommitCommand): Promise<StorageAtomicCommitDecision>;
+}
+
+export type AnyStorageAtomicCommitBackend =
+  | StorageAtomicCommitBackend
+  | AsyncStorageAtomicCommitBackend;
+
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -109,6 +122,29 @@ export function applyStorageAtomicCommit(
 
   try {
     const decision = backend.compareConsumeAndSwap(command);
+    if (decision.status === "COMMITTED") {
+      return {
+        status: "COMMITTED",
+        current: clone(decision.current),
+        commitSequence: decision.commitSequence,
+      };
+    }
+    return decision;
+  } catch {
+    return { status: "HOLD", reason: "BACKEND_FAILURE" };
+  }
+}
+
+export async function applyStorageAtomicCommitAsync(
+  backend: AnyStorageAtomicCommitBackend,
+  commit: WriteBackAtomicCommit,
+): Promise<StorageAtomicCommitDecision> {
+  const command = toStorageAtomicCommitCommand(commit);
+  const invalid = validateStorageAtomicCommitCommand(command);
+  if (invalid !== null) return { status: "HOLD", reason: invalid };
+
+  try {
+    const decision = await backend.compareConsumeAndSwap(command);
     if (decision.status === "COMMITTED") {
       return {
         status: "COMMITTED",
@@ -189,8 +225,6 @@ export class InMemoryAtomicCommitBackend implements StorageAtomicCommitBackend {
       throw new Error("simulated backend failure before atomic commit");
     }
 
-    // Commit point: all checks are complete. Mutations below form one synchronous unit
-    // in this executable reference backend.
     this.consumedResultIds.add(command.consumeResultId);
     this.consumedHandoffIds.add(command.consumeHandoffId);
     this.current = clone(command.nextCurrent);

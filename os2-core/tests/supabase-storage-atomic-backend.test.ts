@@ -4,9 +4,13 @@ import type { CurrentStateSnapshot } from "../src/current-state.js";
 import {
   applyStorageAtomicCommitWithSupabase,
   parseSupabaseAtomicDecision,
+  SupabaseStorageAtomicCommitBackend,
   type SupabaseAtomicRpcClient,
 } from "../src/supabase-storage-atomic-backend.js";
-import { toStorageAtomicCommitCommand } from "../src/storage-atomic-commit-adapter.js";
+import {
+  applyStorageAtomicCommitAsync,
+  toStorageAtomicCommitCommand,
+} from "../src/storage-atomic-commit-adapter.js";
 import type { WriteBackAtomicCommit, WriteBackCurrentStateCandidate } from "../src/write-back.js";
 
 function current(revision = 12): CurrentStateSnapshot {
@@ -114,8 +118,7 @@ test("4 thrown provider error becomes BACKEND_FAILURE", async () => {
 });
 
 test("5 unknown provider status fails closed", () => {
-  const c = commit();
-  const command = toStorageAtomicCommitCommand(c);
+  const command = toStorageAtomicCommitCommand(commit());
   assert.deepEqual(parseSupabaseAtomicDecision({ status: "MAYBE" }, command), {
     status: "HOLD",
     reason: "BACKEND_FAILURE",
@@ -170,4 +173,49 @@ test("10 exact command is sent once without caller-controlled weakening", async 
   const decision = await applyStorageAtomicCommitWithSupabase(client, commit());
   assert.equal(decision.status, "COMMITTED");
   assert.deepEqual(received, expected);
+});
+
+test("11 production Supabase adapter satisfies async atomic backend contract", async () => {
+  let calls = 0;
+  const client: SupabaseAtomicRpcClient = {
+    async compareConsumeAndSwap(command) {
+      calls += 1;
+      await Promise.resolve();
+      return { status: "COMMITTED", current: command.nextCurrent, commitSequence: 11 };
+    },
+  };
+  const backend = new SupabaseStorageAtomicCommitBackend(client);
+  const decision = await applyStorageAtomicCommitAsync(backend, commit());
+  assert.equal(decision.status, "COMMITTED");
+  if (decision.status === "COMMITTED") assert.equal(decision.commitSequence, 11);
+  assert.equal(calls, 1);
+});
+
+test("12 async provider cannot acknowledge a different CURRENT", async () => {
+  const client: SupabaseAtomicRpcClient = {
+    async compareConsumeAndSwap(command) {
+      const forged = structuredClone(command.nextCurrent);
+      forged.nextActionSingle = { actionId: "ATTACK", description: "provider substitution" };
+      return { status: "COMMITTED", current: forged, commitSequence: 12 };
+    },
+  };
+  const backend = new SupabaseStorageAtomicCommitBackend(client);
+  assert.deepEqual(await applyStorageAtomicCommitAsync(backend, commit()), {
+    status: "HOLD",
+    reason: "BACKEND_FAILURE",
+  });
+});
+
+test("13 async provider rejection/throw remains fail closed", async () => {
+  const client: SupabaseAtomicRpcClient = {
+    async compareConsumeAndSwap() {
+      await Promise.resolve();
+      throw new Error("network down");
+    },
+  };
+  const backend = new SupabaseStorageAtomicCommitBackend(client);
+  assert.deepEqual(await applyStorageAtomicCommitAsync(backend, commit()), {
+    status: "HOLD",
+    reason: "BACKEND_FAILURE",
+  });
 });

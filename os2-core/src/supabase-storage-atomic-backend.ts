@@ -2,6 +2,7 @@ import { assertSnapshotInvariant } from "./current-state.js";
 import {
   toStorageAtomicCommitCommand,
   validateStorageAtomicCommitCommand,
+  type AsyncStorageAtomicCommitBackend,
   type StorageAtomicCommitDecision,
   type StorageAtomicCommitCommand,
   type StorageAtomicHoldReason,
@@ -57,8 +58,6 @@ export function parseSupabaseAtomicDecision(
     return { status: "HOLD", reason: "BACKEND_FAILURE" };
   }
 
-  // The provider is not allowed to acknowledge COMMITTED for a payload other than
-  // the exact nextCurrent that passed WRITE BACK and the provider-neutral adapter.
   if (!exactJsonEqual(raw.current, command.nextCurrent)) {
     return { status: "HOLD", reason: "BACKEND_FAILURE" };
   }
@@ -70,6 +69,21 @@ export function parseSupabaseAtomicDecision(
   };
 }
 
+export class SupabaseStorageAtomicCommitBackend implements AsyncStorageAtomicCommitBackend {
+  constructor(private readonly client: SupabaseAtomicRpcClient) {}
+
+  async compareConsumeAndSwap(
+    command: StorageAtomicCommitCommand,
+  ): Promise<StorageAtomicCommitDecision> {
+    try {
+      const raw = await this.client.compareConsumeAndSwap(command);
+      return parseSupabaseAtomicDecision(raw, command);
+    } catch {
+      return { status: "HOLD", reason: "BACKEND_FAILURE" };
+    }
+  }
+}
+
 export async function applyStorageAtomicCommitWithSupabase(
   client: SupabaseAtomicRpcClient,
   commit: WriteBackAtomicCommit,
@@ -78,10 +92,5 @@ export async function applyStorageAtomicCommitWithSupabase(
   const invalid = validateStorageAtomicCommitCommand(command);
   if (invalid !== null) return { status: "HOLD", reason: invalid };
 
-  try {
-    const raw = await client.compareConsumeAndSwap(command);
-    return parseSupabaseAtomicDecision(raw, command);
-  } catch {
-    return { status: "HOLD", reason: "BACKEND_FAILURE" };
-  }
+  return new SupabaseStorageAtomicCommitBackend(client).compareConsumeAndSwap(command);
 }
