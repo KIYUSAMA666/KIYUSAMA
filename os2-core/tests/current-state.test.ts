@@ -9,7 +9,7 @@ function snapshot(revision = 1) {
     humanDecisionFinal: { decisionId: "HD-1", sourceAuthority: "KIYUSAMA", shortDirective: "test" },
     mainLineTask: { taskId: "ML-1", description: "test" },
     nextActionSingle: { actionId: "NA-1", description: "test" },
-    activeRolesAndAuthority: {}, activeGuards: [], confirmedRefIndex: [],
+    activeRolesAndAuthority: { B: "2", A: "1" }, activeGuards: [], confirmedRefIndex: [],
     independentLaneHealth: { status: "UNVERIFIED", evidenceVerdict: "INSUFFICIENT", observedAt: null, evidenceSource: "KIRA" },
   };
 }
@@ -22,3 +22,25 @@ test("5 different scope conflicts", () => { const b=snapshot(2); b.identity.scop
 test("6 invalid revision rejected", () => { for (const r of [0,-1,1.5]) { const s=snapshot(1); s.identity.stateRevision=r; assert.throws(()=>assertSnapshotInvariant(s)); } });
 test("7 non-KIYUSAMA final authority rejected", () => { const s=snapshot(1); s.humanDecisionFinal.sourceAuthority="SORA"; assert.throws(()=>assertSnapshotInvariant(s)); });
 test("8 empty next action rejected", () => { const s=snapshot(1); s.nextActionSingle.actionId="   "; assert.throws(()=>assertSnapshotInvariant(s)); });
+test("9 same revision object-key reordering selects", () => {
+  const a = snapshot(1);
+  const b = JSON.parse(JSON.stringify(a));
+  b.activeRolesAndAuthority = { A: "1", B: "2" };
+  assert.equal(selectCurrentSnapshot(a, b).status, "SELECTED");
+});
+test("10 same revision reordered keys with changed value conflicts", () => {
+  const a = snapshot(1);
+  const b = JSON.parse(JSON.stringify(a));
+  b.activeRolesAndAuthority = { A: "1", B: "tampered" };
+  assert.equal(selectCurrentSnapshot(a, b).status, "STATE_CONFLICT");
+});
+test("11 same revision array reordering still conflicts", () => {
+  const a = snapshot(1);
+  a.activeGuards = [
+    { guardId: "G1", rule: "one", refConfirmed: "VERIFIED" },
+    { guardId: "G2", rule: "two", refConfirmed: "VERIFIED" },
+  ];
+  const b = JSON.parse(JSON.stringify(a));
+  b.activeGuards.reverse();
+  assert.equal(selectCurrentSnapshot(a, b).status, "STATE_CONFLICT");
+});
