@@ -106,6 +106,15 @@ function parseBoundary(value: unknown): ExternalTrustSecureBoundary | null {
   };
 }
 
+function hasValidRevokedProofKeyIds(snapshot: SignedRevocationSnapshot): boolean {
+  const seen = new Set<string>();
+  for (const proofKeyId of snapshot.revokedProofKeyIds) {
+    if (!nonEmpty(proofKeyId) || seen.has(proofKeyId)) return false;
+    seen.add(proofKeyId);
+  }
+  return true;
+}
+
 export function parseExternalTrustBoundaryDecision(
   raw: unknown,
   expectedRootId: string,
@@ -184,7 +193,10 @@ export async function advanceExternalTrustWatermarkAuthenticated(
   ) {
     return { status: "HOLD", reason: "REVOCATION_ROLLBACK" };
   }
-  if (!nonEmpty(revocationSnapshot.signatureBase64)) {
+  if (
+    !nonEmpty(revocationSnapshot.signatureBase64) ||
+    !hasValidRevokedProofKeyIds(revocationSnapshot)
+  ) {
     return { status: "HOLD", reason: "REVOCATION_EVIDENCE_INVALID" };
   }
 
