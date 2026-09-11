@@ -24,7 +24,14 @@ export interface ExecutionResultEvidence {
 }
 
 export type ExecutionResultDecision =
-  | { status: "ACCEPTED"; outcome: AcceptedExecutionOutcome }
+  | {
+      status: "ACCEPTED";
+      outcome: AcceptedExecutionOutcome;
+      resultId: string;
+      handoffId: string;
+      sourceStateId: string;
+      sourceStateRevision: number;
+    }
   | {
       status: "HOLD";
       reason:
@@ -159,5 +166,12 @@ export function evaluateExecutionResultEvidence(
     return { status: "HOLD", reason: "RESULT_UNKNOWN" };
   }
 
-  return { status: "ACCEPTED", outcome: evidence.outcome };
+  return {
+    status: "ACCEPTED",
+    outcome: evidence.outcome,
+    resultId: evidence.resultId,
+    handoffId: evidence.handoffId,
+    sourceStateId: evidence.sourceStateId,
+    sourceStateRevision: evidence.sourceStateRevision,
+  };
 }
