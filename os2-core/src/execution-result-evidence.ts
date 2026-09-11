@@ -50,6 +50,26 @@ export interface ExecutionResultEvaluationInput {
   evidence: ExecutionResultEvidence;
 }
 
+export interface AcceptedExecutionResultReceipt {
+  readonly status: "ACCEPTED";
+  readonly resultId: string;
+  readonly handoffId: string;
+  readonly sourceStateId: string;
+  readonly sourceStateRevision: number;
+  readonly outcome: AcceptedExecutionOutcome;
+  readonly evidenceCanonical: string;
+}
+
+export type AcceptedExecutionResultReceiptDecision =
+  | { status: "ACCEPTED"; receipt: AcceptedExecutionResultReceipt }
+  | Extract<ExecutionResultDecision, { status: "HOLD" }>;
+
+const acceptedExecutionResultReceipts = new WeakSet<object>();
+
+function canonicalExecutionResultEvidence(evidence: ExecutionResultEvidence): string {
+  return JSON.stringify(evidence);
+}
+
 export function evaluateExecutionResultEvidence(
   input: ExecutionResultEvaluationInput,
 ): ExecutionResultDecision {
@@ -160,4 +180,39 @@ export function evaluateExecutionResultEvidence(
   }
 
   return { status: "ACCEPTED", outcome: evidence.outcome };
+}
+
+export function issueAcceptedExecutionResultReceipt(
+  input: ExecutionResultEvaluationInput,
+): AcceptedExecutionResultReceiptDecision {
+  const decision = evaluateExecutionResultEvidence(input);
+  if (decision.status !== "ACCEPTED") return decision;
+
+  const receipt: AcceptedExecutionResultReceipt = Object.freeze({
+    status: "ACCEPTED",
+    resultId: input.evidence.resultId,
+    handoffId: input.evidence.handoffId,
+    sourceStateId: input.evidence.sourceStateId,
+    sourceStateRevision: input.evidence.sourceStateRevision,
+    outcome: decision.outcome,
+    evidenceCanonical: canonicalExecutionResultEvidence(input.evidence),
+  });
+  acceptedExecutionResultReceipts.add(receipt);
+  return { status: "ACCEPTED", receipt };
+}
+
+export function isAcceptedExecutionResultReceipt(
+  receipt: AcceptedExecutionResultReceipt,
+  evidence: ExecutionResultEvidence,
+): boolean {
+  return (
+    acceptedExecutionResultReceipts.has(receipt) &&
+    receipt.status === "ACCEPTED" &&
+    receipt.resultId === evidence.resultId &&
+    receipt.handoffId === evidence.handoffId &&
+    receipt.sourceStateId === evidence.sourceStateId &&
+    receipt.sourceStateRevision === evidence.sourceStateRevision &&
+    receipt.outcome === evidence.outcome &&
+    receipt.evidenceCanonical === canonicalExecutionResultEvidence(evidence)
+  );
 }
