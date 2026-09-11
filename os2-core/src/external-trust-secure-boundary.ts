@@ -1,4 +1,8 @@
-import type { ExternalTrustVerificationInput } from "./external-trust-root.js";
+import {
+  canonicalRevocationPayload,
+  type ExternalTrustVerificationInput,
+  type SignedRevocationSnapshot,
+} from "./external-trust-root.js";
 
 export interface ExternalTrustSecureBoundary {
   rootId: string;
@@ -15,8 +19,15 @@ export type ExternalTrustBoundaryHoldReason =
   | "INVALID_TRUST_BOUNDARY_INPUT"
   | "ROOT_PIN_NOT_FOUND"
   | "ROOT_PIN_IMMUTABLE"
+  | "ROOT_PUBLIC_KEY_REQUIRED"
+  | "ROOT_FINGERPRINT_MISMATCH"
   | "GENERATION_CONFLICT"
   | "REVOCATION_ROLLBACK"
+  | "REVOCATION_ROOT_MISMATCH"
+  | "REVOCATION_NOT_FRESH"
+  | "REVOCATION_EVIDENCE_INVALID"
+  | "REVOCATION_SIGNATURE_INVALID"
+  | "AUTHENTICATED_REVOCATION_REQUIRED"
   | "BACKEND_FAILURE";
 
 export type ExternalTrustBoundaryDecision =
@@ -26,11 +37,12 @@ export type ExternalTrustBoundaryDecision =
 
 export interface ExternalTrustBoundaryRpcClient {
   readTrustBoundary(rootId: string, rootVersion: string): Promise<unknown>;
-  advanceRevocationWatermark(
+  advanceRevocationWatermarkAuthenticated(
     rootId: string,
     rootVersion: string,
     expectedGeneration: number,
-    newMinRevocationSequence: number,
+    signedPayload: string,
+    signatureBase64: string,
   ): Promise<unknown>;
 }
 
@@ -38,8 +50,15 @@ const HOLD_REASONS = new Set<ExternalTrustBoundaryHoldReason>([
   "INVALID_TRUST_BOUNDARY_INPUT",
   "ROOT_PIN_NOT_FOUND",
   "ROOT_PIN_IMMUTABLE",
+  "ROOT_PUBLIC_KEY_REQUIRED",
+  "ROOT_FINGERPRINT_MISMATCH",
   "GENERATION_CONFLICT",
   "REVOCATION_ROLLBACK",
+  "REVOCATION_ROOT_MISMATCH",
+  "REVOCATION_NOT_FRESH",
+  "REVOCATION_EVIDENCE_INVALID",
+  "REVOCATION_SIGNATURE_INVALID",
+  "AUTHENTICATED_REVOCATION_REQUIRED",
   "BACKEND_FAILURE",
 ]);
 
@@ -148,20 +167,35 @@ export async function loadExternalTrustBoundary(
   }
 }
 
-export async function advanceExternalTrustWatermark(
+export async function advanceExternalTrustWatermarkAuthenticated(
   client: ExternalTrustBoundaryRpcClient,
   current: ExternalTrustSecureBoundary,
-  newMinRevocationSequence: number,
+  revocationSnapshot: SignedRevocationSnapshot,
 ): Promise<ExternalTrustBoundaryDecision> {
-  if (!Number.isInteger(newMinRevocationSequence) || newMinRevocationSequence < current.minRevocationSequence) {
+  if (
+    revocationSnapshot.rootId !== current.rootId ||
+    revocationSnapshot.rootVersion !== current.rootVersion
+  ) {
+    return { status: "HOLD", reason: "REVOCATION_ROOT_MISMATCH" };
+  }
+  if (
+    !Number.isInteger(revocationSnapshot.sequence) ||
+    revocationSnapshot.sequence < current.minRevocationSequence
+  ) {
     return { status: "HOLD", reason: "REVOCATION_ROLLBACK" };
   }
+  if (!nonEmpty(revocationSnapshot.signatureBase64)) {
+    return { status: "HOLD", reason: "REVOCATION_EVIDENCE_INVALID" };
+  }
+
+  const signedPayload = canonicalRevocationPayload(revocationSnapshot);
   try {
-    const raw = await client.advanceRevocationWatermark(
+    const raw = await client.advanceRevocationWatermarkAuthenticated(
       current.rootId,
       current.rootVersion,
       current.generation,
-      newMinRevocationSequence,
+      signedPayload,
+      revocationSnapshot.signatureBase64,
     );
     const decision = parseExternalTrustBoundaryDecision(
       raw,
@@ -170,7 +204,10 @@ export async function advanceExternalTrustWatermark(
       "ADVANCED",
       current,
     );
-    if (decision.status === "ADVANCED" && decision.boundary.minRevocationSequence !== newMinRevocationSequence) {
+    if (
+      decision.status === "ADVANCED" &&
+      decision.boundary.minRevocationSequence !== revocationSnapshot.sequence
+    ) {
       return { status: "HOLD", reason: "BACKEND_FAILURE" };
     }
     return decision;
