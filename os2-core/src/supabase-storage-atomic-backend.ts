@@ -14,15 +14,15 @@ export interface SupabaseAtomicRpcClient {
   compareConsumeAndSwap(command: StorageAtomicCommitCommand): Promise<unknown>;
 }
 
-/** Minimal structural contract for the current supabase-js schema().rpc() API. */
+/** Minimal structural contract for the current supabase-js rpc() API. */
 export interface SupabaseJsClientLike {
-  schema(schema: string): {
-    rpc(
-      functionName: string,
-      args: { p_command: StorageAtomicCommitCommand },
-    ): PromiseLike<{ data: unknown; error: unknown | null }>;
-  };
+  rpc(
+    functionName: string,
+    args: { p_command: StorageAtomicCommitCommand },
+  ): PromiseLike<{ data: unknown; error: unknown | null }>;
 }
+
+const SUPABASE_ATOMIC_RPC = "os2_storage_compare_consume_and_swap";
 
 const HOLD_REASONS = new Set<StorageAtomicHoldReason>([
   "INVALID_ATOMIC_COMMIT",
@@ -45,9 +45,9 @@ export function createSupabaseJsAtomicRpcClient(
 ): SupabaseAtomicRpcClient {
   return {
     async compareConsumeAndSwap(command: StorageAtomicCommitCommand): Promise<unknown> {
-      const { data, error } = await client
-        .schema("os2_storage_v01")
-        .rpc("compare_consume_and_swap", { p_command: command });
+      const { data, error } = await client.rpc(SUPABASE_ATOMIC_RPC, {
+        p_command: command,
+      });
       if (error !== null) throw error;
       return data;
     },
