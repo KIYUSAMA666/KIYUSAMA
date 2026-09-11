@@ -253,3 +253,47 @@ test("15 boundary refuses a different root version", () => {
     now: "2026-09-11T05:10:00Z",
   }, boundary()), null);
 });
+
+test("16 duplicate revoked proof-key ids are rejected before RPC", async () => {
+  let calls = 0;
+  const client: ExternalTrustBoundaryRpcClient = {
+    readTrustBoundary: unusedRead,
+    async advanceRevocationWatermarkAuthenticated() { calls += 1; return provider("ADVANCED"); },
+  };
+  assert.deepEqual(await advanceExternalTrustWatermarkAuthenticated(
+    client,
+    boundary(),
+    snapshot({ revokedProofKeyIds: ["KEY-X", "KEY-X"] }),
+  ), { status: "HOLD", reason: "REVOCATION_EVIDENCE_INVALID" });
+  assert.equal(calls, 0);
+});
+
+test("17 blank revoked proof-key id is rejected before RPC", async () => {
+  let calls = 0;
+  const client: ExternalTrustBoundaryRpcClient = {
+    readTrustBoundary: unusedRead,
+    async advanceRevocationWatermarkAuthenticated() { calls += 1; return provider("ADVANCED"); },
+  };
+  assert.deepEqual(await advanceExternalTrustWatermarkAuthenticated(
+    client,
+    boundary(),
+    snapshot({ revokedProofKeyIds: ["KEY-X", "   "] }),
+  ), { status: "HOLD", reason: "REVOCATION_EVIDENCE_INVALID" });
+  assert.equal(calls, 0);
+});
+
+test("18 runtime non-string revoked proof-key id fails closed before RPC", async () => {
+  let calls = 0;
+  const client: ExternalTrustBoundaryRpcClient = {
+    readTrustBoundary: unusedRead,
+    async advanceRevocationWatermarkAuthenticated() { calls += 1; return provider("ADVANCED"); },
+  };
+  const malformed = snapshot() as SignedRevocationSnapshot & { revokedProofKeyIds: unknown[] };
+  malformed.revokedProofKeyIds = ["KEY-X", 42];
+  assert.deepEqual(await advanceExternalTrustWatermarkAuthenticated(
+    client,
+    boundary(),
+    malformed as SignedRevocationSnapshot,
+  ), { status: "HOLD", reason: "REVOCATION_EVIDENCE_INVALID" });
+  assert.equal(calls, 0);
+});
