@@ -10,7 +10,7 @@ function input(){return{snapshot:snapshot(),actionEvidenceRequirement:{actionId:
 function request(){return{handoffId:"HO-1",traceId:"TRACE-1",actionId:"NA-1",sourceStateId:"CS-1",sourceStateRevision:1,capabilityId:"CAP-A",implementationId:"IMPL-1",issuedAt:"2026-09-10T16:00:00+09:00",expiresAt:"2026-09-10T17:00:00+09:00",evidenceRefs:[ref()],resultEvidencePolicy:{requiredRefs:[ref("REF-RESULT-1","1","evidence/REF-RESULT-1")],verifierId:"KIRA-1",evidenceSource:"KIRA-1"}}}
 const NOW="2026-09-10T16:30:00+09:00";
 
-test("1 ready with exact bindings",()=>assert.deepEqual(evaluateExecutionHandoff(input(),request(),NOW),{status:"READY"}));
+test("1 ready with exact bindings",()=>assert.deepEqual(evaluateExecutionHandoff(input(),request(),NOW),{status:"READY",handoffId:"HO-1",actionId:"NA-1",sourceStateId:"CS-1",sourceStateRevision:1}));
 test("2 gate not allowed",()=>{const i=input();i.gateDecision={status:"HOLD",reason:"ACTION_NOT_CURRENT"};assert.deepEqual(evaluateExecutionHandoff(i,request(),NOW),{status:"HOLD",reason:"GATE_NOT_ALLOWED"})});
 test("3 capability not ready",()=>{const i=input();i.capabilitySlot={slotId:"S-1",capabilityId:"CAP-A",status:"EMPTY",binding:null};assert.deepEqual(evaluateExecutionHandoff(i,request(),NOW),{status:"HOLD",reason:"CAPABILITY_NOT_READY"})});
 test("4 implementation mismatch",()=>{const r=request();r.implementationId="OTHER";assert.deepEqual(evaluateExecutionHandoff(input(),r,NOW),{status:"HOLD",reason:"HANDOFF_MISMATCH"})});
