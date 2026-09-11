@@ -14,17 +14,12 @@ const command = {
   nextCurrent: {},
 } as StorageAtomicCommitCommand;
 
-test("supabase-js bridge uses private schema RPC and sends p_command exactly once", async () => {
+test("supabase-js bridge calls public service-role facade and sends p_command exactly once", async () => {
   const calls: unknown[] = [];
   const client: SupabaseJsClientLike = {
-    schema(schemaName) {
-      calls.push(["schema", schemaName]);
-      return {
-        async rpc(functionName, args) {
-          calls.push(["rpc", functionName, args]);
-          return { data: { status: "HOLD", reason: "REVISION_CONFLICT" }, error: null };
-        },
-      };
+    async rpc(functionName, args) {
+      calls.push(["rpc", functionName, args]);
+      return { data: { status: "HOLD", reason: "REVISION_CONFLICT" }, error: null };
     },
   };
 
@@ -32,20 +27,15 @@ test("supabase-js bridge uses private schema RPC and sends p_command exactly onc
   const result = await rpc.compareConsumeAndSwap(command);
   assert.deepEqual(result, { status: "HOLD", reason: "REVISION_CONFLICT" });
   assert.deepEqual(calls, [
-    ["schema", "os2_storage_v01"],
-    ["rpc", "compare_consume_and_swap", { p_command: command }],
+    ["rpc", "os2_storage_compare_consume_and_swap", { p_command: command }],
   ]);
 });
 
 test("supabase-js bridge throws provider error instead of treating it as data", async () => {
   const providerError = { message: "rpc failed" };
   const client: SupabaseJsClientLike = {
-    schema() {
-      return {
-        async rpc() {
-          return { data: null, error: providerError };
-        },
-      };
+    async rpc() {
+      return { data: null, error: providerError };
     },
   };
 
