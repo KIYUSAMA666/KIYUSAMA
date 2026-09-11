@@ -9,8 +9,8 @@ function handoff(){return{handoffId:"HO-1",traceId:"TRACE-1",actionId:"NA-1",sou
 function evidence(){return{resultId:"RESULT-1",handoffId:"HO-1",traceId:"TRACE-1",actionId:"NA-1",sourceStateId:"CS-1",sourceStateRevision:1,capabilityId:"CAP-A",implementationId:"IMPL-1",executorId:"EXECUTOR-1",verifierId:"KIRA-1",outcome:"SUCCEEDED",providerExecutionId:"PROVIDER-1",observedAt:"2026-09-10T16:20:00+09:00",evidenceRefIds:["REF-RESULT-1"],verification:"VERIFIED"}}
 function input(){return{snapshot:snapshot(),handoff:handoff(),evidence:evidence()}}
 
-test("1 verified succeeded exact-bound result accepted",()=>assert.deepEqual(evaluateExecutionResultEvidence(input()),{status:"ACCEPTED",outcome:"SUCCEEDED"}));
-test("2 failed observed outcome accepted",()=>{const i=input();i.evidence.outcome="FAILED";assert.deepEqual(evaluateExecutionResultEvidence(i),{status:"ACCEPTED",outcome:"FAILED"})});
+test("1 verified succeeded exact-bound result accepted",()=>assert.deepEqual(evaluateExecutionResultEvidence(input()),{status:"ACCEPTED",outcome:"SUCCEEDED",resultId:"RESULT-1",handoffId:"HO-1",sourceStateId:"CS-1",sourceStateRevision:1}));
+test("2 failed observed outcome accepted",()=>{const i=input();i.evidence.outcome="FAILED";assert.deepEqual(evaluateExecutionResultEvidence(i),{status:"ACCEPTED",outcome:"FAILED",resultId:"RESULT-1",handoffId:"HO-1",sourceStateId:"CS-1",sourceStateRevision:1})});
 test("3 self verification forbidden",()=>{const i=input();i.evidence.verifierId=i.evidence.executorId;i.handoff.resultEvidencePolicy.verifierId=i.evidence.executorId;assert.deepEqual(evaluateExecutionResultEvidence(i),{status:"HOLD",reason:"SELF_VERIFICATION_FORBIDDEN"})});
 test("4 verifier substitution holds",()=>{const i=input();i.evidence.verifierId="KIRA-OTHER";assert.deepEqual(evaluateExecutionResultEvidence(i),{status:"HOLD",reason:"VERIFIER_BINDING_MISMATCH"})});
 test("5 lane source substitution holds",()=>{const i=input();i.snapshot.independentLaneHealth.evidenceSource="OTHER-LANE";assert.deepEqual(evaluateExecutionResultEvidence(i),{status:"HOLD",reason:"EVIDENCE_SOURCE_MISMATCH"})});
