@@ -1,7 +1,13 @@
 // @ts-nocheck
 import test from "node:test";
 import assert from "node:assert/strict";
+import { issueVerifiedExecutionHandoffReceipt } from "../src/execution-handoff.js";
+import { issueAcceptedExecutionResultReceipt } from "../src/execution-result-evidence.js";
 import { evaluateWriteBack, toWriteBackAtomicCommit } from "../src/write-back.js";
+
+const prereqRef = { id: "REF-PRE-1", expectedVersion: "1", path: "evidence/REF-PRE-1" };
+const resultRef = { id: "REF-RESULT-1", expectedVersion: "1", path: "evidence/REF-RESULT-1" };
+const NOW = "2026-09-10T18:30:00+09:00";
 
 function current(revision = 5) {
   return {
@@ -20,14 +26,17 @@ function current(revision = 5) {
     },
     mainLineTask: { taskId: "ML-1", description: "test" },
     nextActionSingle: { actionId: "NA-1", description: "write current" },
-    activeRolesAndAuthority: {},
-    activeGuards: [],
-    confirmedRefIndex: [],
+    activeRolesAndAuthority: { verifier: "KIRA-1" },
+    activeGuards: [{ guardId: "G-1", rule: "fail closed", refConfirmed: "VERIFIED" }],
+    confirmedRefIndex: [
+      { ...prereqRef, status: "VERIFIED" },
+      { ...resultRef, status: "VERIFIED" },
+    ],
     independentLaneHealth: {
       status: "VERIFIED",
       evidenceVerdict: "SUFFICIENT",
       observedAt: "2026-09-10T18:00:00+09:00",
-      evidenceSource: "KIRA",
+      evidenceSource: "KIRA-1",
     },
   };
 }
@@ -43,7 +52,12 @@ function handoff(revision = 5) {
     implementationId: "IMPL-1",
     issuedAt: "2026-09-10T18:00:00+09:00",
     expiresAt: "2026-09-10T19:00:00+09:00",
-    evidenceRefIds: ["REF-1"],
+    evidenceRefs: [prereqRef],
+    resultEvidencePolicy: {
+      requiredRefs: [resultRef],
+      verifierId: "KIRA-1",
+      evidenceSource: "KIRA-1",
+    },
   };
 }
 
@@ -61,21 +75,44 @@ function result(revision = 5) {
     verifierId: "KIRA-1",
     outcome: "SUCCEEDED",
     providerExecutionId: "PROVIDER-1",
-    observedAt: "2026-09-10T18:30:00+09:00",
-    evidenceRefIds: ["REF-1"],
+    observedAt: NOW,
+    evidenceRefIds: ["REF-RESULT-1"],
     verification: "VERIFIED",
   };
 }
 
-function candidate(parentRevision = 5) {
+function handoffInput(snapshot = current()) {
   return {
-    ...current(parentRevision + 1),
+    snapshot,
+    actionEvidenceRequirement: {
+      actionId: "NA-1",
+      requiredRefs: [prereqRef],
+      requireIndependentLane: true,
+    },
+    capabilitySlot: {
+      slotId: "S-1",
+      capabilityId: "CAP-A",
+      status: "BOUND",
+      binding: {
+        capabilityId: "CAP-A",
+        implementationId: "IMPL-1",
+        source: "NATIVE",
+        version: "1",
+        verified: true,
+      },
+    },
+    gateDecision: { status: "ALLOW", actionId: "NA-1", stateId: "CS-1", stateRevision: snapshot.identity.stateRevision },
+  };
+}
+
+function candidate(parentRevision = 5) {
+  const base = current(parentRevision);
+  return {
+    ...base,
     identity: {
-      ...current(parentRevision + 1).identity,
-      stateId: "CS-1",
+      ...base.identity,
       stateRevision: parentRevision + 1,
-      lineageId: "LINEAGE-MAIN-001",
-      scope: "KIYUSAMA_OS_2",
+      effectiveAt: "2026-09-10T18:31:00+09:00",
     },
     writeBack: {
       parent: { parentStateId: "CS-1", parentRevision },
@@ -102,10 +139,22 @@ function request(parentRevision = 5) {
 }
 
 function input(revision = 5) {
+  const snapshot = current(revision);
+  const h = handoff(revision);
+  const r = result(revision);
+
+  const handoffDecision = issueVerifiedExecutionHandoffReceipt(handoffInput(snapshot), h, NOW);
+  assert.equal(handoffDecision.status, "READY");
+
+  const resultDecision = issueAcceptedExecutionResultReceipt({ snapshot, handoff: h, evidence: r });
+  assert.equal(resultDecision.status, "ACCEPTED");
+
   return {
-    current: current(revision),
-    handoff: handoff(revision),
-    result: result(revision),
+    current: snapshot,
+    handoff: h,
+    handoffReceipt: handoffDecision.receipt,
+    result: r,
+    resultReceipt: resultDecision.receipt,
     consumedResultIds: new Set(),
     consumedHandoffIds: new Set(),
   };
@@ -115,46 +164,46 @@ test("0 all write-back conditions satisfied is READY", () => {
   assert.equal(evaluateWriteBack(input(), request()).status, "READY");
 });
 
-test("1 consumed result cannot authorize a second write", () => {
+test("1 fabricated handoff READY cannot authorize write-back", () => {
+  const i = input();
+  i.handoffReceipt = { status: "READY", handoffId: "HO-1", sourceStateId: "CS-1", sourceStateRevision: 5, requestCanonical: JSON.stringify(i.handoff) };
+  assert.deepEqual(evaluateWriteBack(i, request()), { status: "HOLD", reason: "HANDOFF_NOT_READY" });
+});
+
+test("2 rejected result cannot be reused after receipt input is changed", () => {
+  const i = input();
+  i.result.executorId = "KIRA-1";
+  assert.deepEqual(evaluateWriteBack(i, request()), { status: "HOLD", reason: "RESULT_NOT_ACCEPTED" });
+});
+
+test("3 consumed result cannot authorize a second write", () => {
   const i = input();
   i.consumedResultIds.add("RESULT-1");
   assert.deepEqual(evaluateWriteBack(i, request()), { status: "HOLD", reason: "RESULT_ALREADY_CONSUMED" });
 });
 
-test("2 consumed handoff cannot authorize a second write", () => {
+test("4 consumed handoff cannot authorize a second write", () => {
   const i = input();
   i.consumedHandoffIds.add("HO-1");
   assert.deepEqual(evaluateWriteBack(i, request()), { status: "HOLD", reason: "HANDOFF_ALREADY_CONSUMED" });
 });
 
-test("3 candidate revision cannot skip parentRevision + 1", () => {
+test("5 candidate revision cannot skip parentRevision + 1", () => {
   const r = request();
   r.candidate.identity.stateRevision = 7;
   assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "REVISION_CONFLICT" });
 });
 
-test("4 candidate stateId must remain equal to parentStateId", () => {
+test("6 candidate stateId must remain equal to parentStateId", () => {
   const r = request();
   r.candidate.identity.stateId = "CS-OTHER";
   assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "REVISION_CONFLICT" });
 });
 
-test("5 stale parent/CAS context fails closed", () => {
+test("7 stale parent/CAS context fails closed", () => {
   const i = input(7);
   const r = request(5);
   assert.deepEqual(evaluateWriteBack(i, r), { status: "HOLD", reason: "PARENT_MISMATCH" });
-});
-
-test("6 handoff from another state cannot be reused", () => {
-  const i = input();
-  i.handoff.sourceStateId = "CS-OTHER";
-  assert.deepEqual(evaluateWriteBack(i, request()), { status: "HOLD", reason: "SOURCE_BINDING_MISMATCH" });
-});
-
-test("7 resultId comparison is exact and case-sensitive", () => {
-  const i = input();
-  i.result.resultId = "result-1";
-  assert.deepEqual(evaluateWriteBack(i, request()), { status: "HOLD", reason: "SOURCE_BINDING_MISMATCH" });
 });
 
 test("8 candidate lineage cannot change during write back", () => {
@@ -163,7 +212,37 @@ test("8 candidate lineage cannot change during write back", () => {
   assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "REVISION_CONFLICT" });
 });
 
-test("9 atomic commit projection preserves CAS, consumption IDs, and next CURRENT", () => {
+test("9 candidate invariant is enforced", () => {
+  const r = request();
+  r.candidate.nextActionSingle.actionId = "";
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "CANDIDATE_INVARIANT_FAILED" });
+});
+
+test("10 activeRolesAndAuthority cannot be changed by write-back", () => {
+  const r = request();
+  r.candidate.activeRolesAndAuthority = { verifier: "ATTACKER" };
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "UNAUTHORIZED_STATE_MUTATION" });
+});
+
+test("11 humanDecisionFinal cannot be changed by write-back", () => {
+  const r = request();
+  r.candidate.humanDecisionFinal.shortDirective = "replace authority";
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "UNAUTHORIZED_STATE_MUTATION" });
+});
+
+test("12 nextActionSingle cannot be changed by write-back", () => {
+  const r = request();
+  r.candidate.nextActionSingle = { actionId: "NA-OTHER", description: "unauthorized" };
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "UNAUTHORIZED_STATE_MUTATION" });
+});
+
+test("13 effectiveAt cannot move backwards", () => {
+  const r = request();
+  r.candidate.identity.effectiveAt = "2026-09-10T17:59:59+09:00";
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "CANDIDATE_INVARIANT_FAILED" });
+});
+
+test("14 atomic commit projection preserves CAS, consumption IDs, and next CURRENT", () => {
   const r = request();
   assert.deepEqual(toWriteBackAtomicCommit(r), {
     expectedCurrent: r.cas,
