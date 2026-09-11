@@ -7,6 +7,7 @@ const ISSUER = "https://token.actions.githubusercontent.com";
 const POLICY_ID = "OS2-RRG-V01";
 const ISSUE_RPC = "os2_reentry_issue_attestation";
 const READ_RPC = "os2_reentry_read_attestation";
+const READ_CURRENT_RPC = "os2_storage_read_current";
 const POLICY_RPC = "os2_reentry_read_issuer_policy";
 const ATTESTATION_ID = "OS2-RRG-V01-ATTEST-001";
 const STATE_ID = "OS2-PTE-V01-STATE";
@@ -110,10 +111,14 @@ Deno.serve(async (req: Request) => {
   const { data: readback, error: readError } = await admin.rpc(READ_RPC, { p_attestation_id: ATTESTATION_ID });
   if (readError) return Response.json({ ok: false, error: "READBACK_RPC_FAILED", message: readError.message ?? null }, { status: 500 });
 
+  const { data: currentReadback, error: currentError } = await admin.rpc(READ_CURRENT_RPC);
+  if (currentError) return Response.json({ ok: false, error: "CURRENT_READBACK_FAILED", message: currentError.message ?? null }, { status: 500 });
+
   return Response.json({
     ok: true,
     issued,
     readback,
+    currentReadback,
     github: {
       repository: github.repository ?? null,
       actor: github.actor ?? null,
