@@ -49,6 +49,20 @@ export type ExecutionHandoffDecision =
   | { status: "READY" }
   | { status: "HOLD"; reason: ExecutionHandoffHoldReason };
 
+export interface VerifiedExecutionHandoffReceipt {
+  readonly status: "READY";
+  readonly handoffId: string;
+  readonly sourceStateId: string;
+  readonly sourceStateRevision: number;
+  readonly requestCanonical: string;
+}
+
+export type VerifiedExecutionHandoffReceiptDecision =
+  | { status: "READY"; receipt: VerifiedExecutionHandoffReceipt }
+  | { status: "HOLD"; reason: ExecutionHandoffHoldReason };
+
+const verifiedExecutionHandoffReceipts = new WeakSet<object>();
+
 function sameRefBinding(a: RequiredEvidenceRefBinding, b: RequiredEvidenceRefBinding): boolean {
   return a.id === b.id && a.expectedVersion === b.expectedVersion && a.path === b.path;
 }
@@ -61,6 +75,10 @@ function hasExactRefSet(
   const ids = new Set(actual.map((ref) => ref.id));
   if (ids.size !== actual.length) return false;
   return required.every((requiredRef) => actual.some((actualRef) => sameRefBinding(actualRef, requiredRef)));
+}
+
+function canonicalHandoffRequest(request: ExecutionHandoffRequest): string {
+  return JSON.stringify(request);
 }
 
 export function evaluateExecutionHandoff(
@@ -162,4 +180,37 @@ export function evaluateExecutionHandoff(
   }
 
   return { status: "READY" };
+}
+
+export function issueVerifiedExecutionHandoffReceipt(
+  input: ExecutionHandoffInput,
+  request: ExecutionHandoffRequest,
+  now: string,
+): VerifiedExecutionHandoffReceiptDecision {
+  const decision = evaluateExecutionHandoff(input, request, now);
+  if (decision.status !== "READY") return decision;
+
+  const receipt: VerifiedExecutionHandoffReceipt = Object.freeze({
+    status: "READY",
+    handoffId: request.handoffId,
+    sourceStateId: request.sourceStateId,
+    sourceStateRevision: request.sourceStateRevision,
+    requestCanonical: canonicalHandoffRequest(request),
+  });
+  verifiedExecutionHandoffReceipts.add(receipt);
+  return { status: "READY", receipt };
+}
+
+export function isVerifiedExecutionHandoffReceipt(
+  receipt: VerifiedExecutionHandoffReceipt,
+  request: ExecutionHandoffRequest,
+): boolean {
+  return (
+    verifiedExecutionHandoffReceipts.has(receipt) &&
+    receipt.status === "READY" &&
+    receipt.handoffId === request.handoffId &&
+    receipt.sourceStateId === request.sourceStateId &&
+    receipt.sourceStateRevision === request.sourceStateRevision &&
+    receipt.requestCanonical === canonicalHandoffRequest(request)
+  );
 }
