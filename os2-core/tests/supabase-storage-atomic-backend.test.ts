@@ -171,3 +171,61 @@ test("10 exact command is sent once without caller-controlled weakening", async 
   assert.equal(decision.status, "COMMITTED");
   assert.deepEqual(received, expected);
 });
+
+test("11 jsonb key reordering preserves exact COMMITTED payload", () => {
+  const command = toStorageAtomicCommitCommand(commit());
+  const expected = command.nextCurrent;
+  const reordered = {
+    writeBack: {
+      source: {
+        sourceHandoffId: expected.writeBack.source.sourceHandoffId,
+        sourceResultId: expected.writeBack.source.sourceResultId,
+      },
+      parent: {
+        parentRevision: expected.writeBack.parent.parentRevision,
+        parentStateId: expected.writeBack.parent.parentStateId,
+      },
+    },
+    independentLaneHealth: {
+      evidenceSource: expected.independentLaneHealth.evidenceSource,
+      observedAt: expected.independentLaneHealth.observedAt,
+      evidenceVerdict: expected.independentLaneHealth.evidenceVerdict,
+      status: expected.independentLaneHealth.status,
+    },
+    confirmedRefIndex: expected.confirmedRefIndex.map((ref) => ({
+      path: ref.path,
+      expectedVersion: ref.expectedVersion,
+      status: ref.status,
+      id: ref.id,
+    })),
+    activeGuards: expected.activeGuards,
+    activeRolesAndAuthority: expected.activeRolesAndAuthority,
+    nextActionSingle: {
+      description: expected.nextActionSingle.description,
+      actionId: expected.nextActionSingle.actionId,
+    },
+    mainLineTask: {
+      description: expected.mainLineTask.description,
+      taskId: expected.mainLineTask.taskId,
+    },
+    humanDecisionFinal: {
+      shortDirective: expected.humanDecisionFinal.shortDirective,
+      sourceAuthority: expected.humanDecisionFinal.sourceAuthority,
+      decisionId: expected.humanDecisionFinal.decisionId,
+    },
+    identity: {
+      lineageId: expected.identity.lineageId,
+      scope: expected.identity.scope,
+      effectiveAt: expected.identity.effectiveAt,
+      stateRevision: expected.identity.stateRevision,
+      schemaVersion: expected.identity.schemaVersion,
+      stateId: expected.identity.stateId,
+    },
+  };
+
+  const decision = parseSupabaseAtomicDecision(
+    { status: "COMMITTED", current: reordered, commitSequence: 1 },
+    command,
+  );
+  assert.equal(decision.status, "COMMITTED");
+});
