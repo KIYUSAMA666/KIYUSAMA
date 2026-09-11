@@ -36,8 +36,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalJson(value[key])]),
+    );
+  }
+  return value;
+}
+
 function exactJsonEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return JSON.stringify(canonicalJson(a)) === JSON.stringify(canonicalJson(b));
 }
 
 export function createSupabaseJsAtomicRpcClient(
@@ -83,8 +95,9 @@ export function parseSupabaseAtomicDecision(
     return { status: "HOLD", reason: "BACKEND_FAILURE" };
   }
 
-  // The provider is not allowed to acknowledge COMMITTED for a payload other than
-  // the exact nextCurrent that passed WRITE BACK and the provider-neutral adapter.
+  // PostgreSQL jsonb does not preserve object key insertion order. Compare the
+  // provider acknowledgement against the exact verified payload canonically so
+  // key reordering is accepted but any value/array/content substitution is not.
   if (!exactJsonEqual(raw.current, command.nextCurrent)) {
     return { status: "HOLD", reason: "BACKEND_FAILURE" };
   }

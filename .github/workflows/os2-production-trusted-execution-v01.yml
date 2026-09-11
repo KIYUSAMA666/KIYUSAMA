@@ -1,0 +1,14 @@
+name: OS2 Production Trusted Execution v0.1 (closed)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-trusted-execution-closed:
+    if: ${{ false }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "OS2 Production Trusted Execution v0.1 is closed after successful production proof."

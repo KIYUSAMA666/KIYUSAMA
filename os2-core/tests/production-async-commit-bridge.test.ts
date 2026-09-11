@@ -140,3 +140,59 @@ test("malformed committed sequence fails closed", async () => {
     reason: "BACKEND_FAILURE",
   });
 });
+
+test("jsonb object-key reordering is accepted at the outer async bridge", async () => {
+  const expected = candidate();
+  const reordered = {
+    writeBack: {
+      source: {
+        sourceHandoffId: expected.writeBack.source.sourceHandoffId,
+        sourceResultId: expected.writeBack.source.sourceResultId,
+      },
+      parent: {
+        parentRevision: expected.writeBack.parent.parentRevision,
+        parentStateId: expected.writeBack.parent.parentStateId,
+      },
+    },
+    independentLaneHealth: {
+      evidenceSource: expected.independentLaneHealth.evidenceSource,
+      observedAt: expected.independentLaneHealth.observedAt,
+      evidenceVerdict: expected.independentLaneHealth.evidenceVerdict,
+      status: expected.independentLaneHealth.status,
+    },
+    confirmedRefIndex: expected.confirmedRefIndex,
+    activeGuards: expected.activeGuards,
+    activeRolesAndAuthority: expected.activeRolesAndAuthority,
+    nextActionSingle: {
+      description: expected.nextActionSingle.description,
+      actionId: expected.nextActionSingle.actionId,
+    },
+    mainLineTask: {
+      description: expected.mainLineTask.description,
+      taskId: expected.mainLineTask.taskId,
+    },
+    humanDecisionFinal: {
+      shortDirective: expected.humanDecisionFinal.shortDirective,
+      sourceAuthority: expected.humanDecisionFinal.sourceAuthority,
+      decisionId: expected.humanDecisionFinal.decisionId,
+    },
+    identity: {
+      lineageId: expected.identity.lineageId,
+      scope: expected.identity.scope,
+      effectiveAt: expected.identity.effectiveAt,
+      stateRevision: expected.identity.stateRevision,
+      schemaVersion: expected.identity.schemaVersion,
+      stateId: expected.identity.stateId,
+    },
+  } as WriteBackCurrentStateCandidate;
+
+  const backend: AsyncStorageAtomicCommitBackend = {
+    async compareConsumeAndSwap() {
+      return { status: "COMMITTED", current: reordered, commitSequence: 1 };
+    },
+  };
+
+  const decision = await applyStorageAtomicCommitAsync(backend, commit());
+  assert.equal(decision.status, "COMMITTED");
+  if (decision.status === "COMMITTED") assert.equal(decision.commitSequence, 1);
+});
