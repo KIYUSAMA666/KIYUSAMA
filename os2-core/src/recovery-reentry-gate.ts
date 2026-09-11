@@ -8,6 +8,7 @@ import {
 } from "./pre-execution-gate.js";
 
 export interface RecoveryReentryAttestation {
+  attestationId?: string;
   stateId: string;
   lineageId: string;
   stateRevision: number;
@@ -45,8 +46,10 @@ export type RecoveryReentryGateDecision =
       stateId: string;
       stateRevision: number;
       commitSequence: number;
+      attestationId: string | null;
       attestationObservedAt: string;
       attestationSource: string;
+      reentryAuthorityExpiresAt: string;
     }
   | {
       status: "HOLD";
@@ -108,6 +111,11 @@ export function evaluateRecoveryReentryGate<T = unknown>(
     return { status: "HOLD", reason: "ATTESTATION_STALE" };
   }
 
+  const authorityExpiresAtMs = observedMs + input.maxAttestationAgeMs;
+  if (!Number.isFinite(authorityExpiresAtMs)) {
+    return { status: "HOLD", reason: "ATTESTATION_TIME_INVALID" };
+  }
+
   const preExecution = evaluatePreExecutionGate({
     actionId: current.nextActionSingle.actionId,
     snapshot: current,
@@ -131,7 +139,12 @@ export function evaluateRecoveryReentryGate<T = unknown>(
     stateId: preExecution.stateId,
     stateRevision: preExecution.stateRevision,
     commitSequence,
+    attestationId:
+      typeof attestation.attestationId === "string" && attestation.attestationId.trim()
+        ? attestation.attestationId
+        : null,
     attestationObservedAt: attestation.observedAt,
     attestationSource: attestation.evidenceSource,
+    reentryAuthorityExpiresAt: new Date(authorityExpiresAtMs).toISOString(),
   };
 }
