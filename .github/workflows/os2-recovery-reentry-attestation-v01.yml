@@ -1,0 +1,14 @@
+name: OS2 Recovery Re-entry Attestation v0.1 (CLOSED)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  closed:
+    if: false
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo OS2_RECOVERY_REENTRY_ATTESTATION_V01_CLOSED
