@@ -6,6 +6,7 @@ import {
   applyStorageAtomicCommit,
   type StorageAtomicCommitBackend,
 } from "./storage-atomic-commit-adapter.js";
+import type { WriteBackAtomicCommit } from "./write-back.js";
 
 /**
  * TRUSTED COMMIT ORCHESTRATOR v0.1
@@ -14,6 +15,11 @@ import {
  * pipeline and the atomic storage backend. Callers cannot supply an atomic
  * commit directly: it is derived internally from a READY_TO_COMMIT pipeline
  * decision and immediately handed to the backend adapter.
+ *
+ * Security note:
+ * the verified atomic commit is deep-snapshotted before the backend property
+ * is accessed. This prevents a hostile getter/proxy from mutating the original
+ * caller-owned candidate after trust validation but before persistence.
  */
 
 export type TrustedCommitOrchestratorStage =
@@ -34,6 +40,10 @@ export interface TrustedCommitOrchestratorInput<T = unknown> {
   backend: StorageAtomicCommitBackend;
 }
 
+function snapshotAtomicCommit(commit: WriteBackAtomicCommit): WriteBackAtomicCommit {
+  return JSON.parse(JSON.stringify(commit)) as WriteBackAtomicCommit;
+}
+
 export async function executeTrustedCommit<T = unknown>(
   input: TrustedCommitOrchestratorInput<T>,
 ): Promise<TrustedCommitOrchestratorDecision> {
@@ -47,10 +57,11 @@ export async function executeTrustedCommit<T = unknown>(
     };
   }
 
-  const commitDecision = await applyStorageAtomicCommit(
-    input.backend,
-    pipelineDecision.atomicCommit,
-  );
+  // Snapshot first. Accessing input.backend may execute a caller-controlled getter.
+  // The backend must never observe a post-validation mutation of caller-owned input.
+  const verifiedCommit = snapshotAtomicCommit(pipelineDecision.atomicCommit);
+  const backend = input.backend;
+  const commitDecision = await applyStorageAtomicCommit(backend, verifiedCommit);
   if (commitDecision.status !== "COMMITTED") {
     return {
       status: "HOLD",
