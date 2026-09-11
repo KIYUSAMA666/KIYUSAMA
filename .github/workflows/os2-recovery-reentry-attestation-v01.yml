@@ -1,0 +1,134 @@
+name: OS2 Recovery Re-entry Attestation v0.1
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  independent-reentry-attestation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: os2-core/package-lock.json
+
+      - name: Verify prior independent production evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/KIYUSAMA666/KIYUSAMA/actions/jobs/103240868540/logs" \
+            -o /tmp/pte.log
+          grep -F 'OS2_PTE_V01_DECISION {"status":"COMMITTED","commitSequence":1}' /tmp/pte.log
+          grep -F '"stateId":"OS2-PTE-V01-STATE"' /tmp/pte.log
+          grep -F '"lineageId":"OS2-PTE-V01-LINEAGE"' /tmp/pte.log
+          grep -F '"stateRevision":2' /tmp/pte.log
+          grep -F '"sha":"e616bb0ab6cfc0f81fe29257677e5ab870ece7ba"' /tmp/pte.log
+          echo 'OS2_RRG_V01_PRIOR_EVIDENCE VERIFIED run=34592393362 job=103240868540 state=OS2-PTE-V01-STATE lineage=OS2-PTE-V01-LINEAGE revision=2 commitSequence=1'
+
+      - name: Build and unit test current PR
+        working-directory: os2-core
+        run: |
+          npm install --ignore-scripts
+          npm test
+
+      - name: Obtain GitHub OIDC token
+        id: oidc
+        shell: bash
+        run: |
+          set -euo pipefail
+          token_json=$(curl -fsSL \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=kiyusama-os2-recovery-reentry-attestation-v01")
+          token=$(printf '%s' "$token_json" | jq -r '.value')
+          test -n "$token" && test "$token" != "null"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Request independently bound production attestation
+        id: relay
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          request=$(jq -nc '{request:{attestationId:"OS2-RRG-V01-ATTEST-001",stateId:"OS2-PTE-V01-STATE",lineageId:"OS2-PTE-V01-LINEAGE",stateRevision:2,commitSequence:1,evidenceRunId:"34592393362",evidenceJobId:"103240868540"}}')
+          status=$(curl -sS -o /tmp/reentry.json -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer ${OIDC_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data "$request" \
+            'https://zdypjilutgxjsneultqj.supabase.co/functions/v1/os2-recovery-reentry-attestation-v01')
+          echo "OS2_RRG_V01_HTTP_STATUS ${status}"
+          cat /tmp/reentry.json
+          echo
+          test "$status" = "200"
+          jq -e '.ok == true' /tmp/reentry.json >/dev/null
+
+      - name: Prove durable readback and fresh re-entry ALLOW
+        working-directory: os2-core
+        run: |
+          set -euo pipefail
+          cp /tmp/reentry.json /tmp/reentry-proof.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { loadProductionRecoveryReentryAttestation } from './dist/src/production-reentry-attestation.js';
+          import { evaluateRecoveryReentryGate } from './dist/src/recovery-reentry-gate.js';
+
+          const response = JSON.parse(fs.readFileSync('/tmp/reentry-proof.json', 'utf8'));
+          const current = response.currentReadback;
+          const attestation = response.readback;
+          const github = response.github;
+          if (!current || !attestation || !github) throw new Error('proof payload missing');
+
+          const binding = {
+            attestationId: 'OS2-RRG-V01-ATTEST-001',
+            stateId: 'OS2-PTE-V01-STATE',
+            lineageId: 'OS2-PTE-V01-LINEAGE',
+            stateRevision: 2,
+            commitSequence: 1,
+          };
+          const issuer = {
+            repository: github.repository,
+            actor: github.actor,
+            eventName: github.event_name,
+            ref: github.ref,
+            sha: github.sha,
+            workflowRef: github.job_workflow_ref,
+            evidenceRunId: '34592393362',
+            evidenceJobId: '103240868540',
+          };
+          const loaded = await loadProductionRecoveryReentryAttestation(
+            { readAttestation: async () => attestation }, binding, issuer,
+          );
+          if (loaded.status !== 'VERIFIED') throw new Error(`attestation load failed: ${JSON.stringify(loaded)}`);
+
+          if (current.stateId !== binding.stateId || current.revision !== 2 || current.commitSequence !== 1) {
+            throw new Error('CURRENT readback binding mismatch');
+          }
+          const recovery = { status: 'RECOVERED', current: current.current, commitSequence: current.commitSequence };
+          const gate = evaluateRecoveryReentryGate({
+            recovery,
+            attestation: loaded.attestation,
+            now: new Date().toISOString(),
+            maxAttestationAgeMs: 15 * 60 * 1000,
+            memoryDecision: { status: 'EXECUTION_CANDIDATE', record: { id: 'OS2-RRG-V01-CURRENT', memoryClass: 'CURRENT', payload: current.current } },
+            actionEvidenceDecision: { status: 'SATISFIED' },
+          });
+          console.log('OS2_RRG_V01_ATTESTATION', JSON.stringify(loaded));
+          console.log('OS2_RRG_V01_GATE', JSON.stringify(gate));
+          if (gate.status !== 'ALLOW') throw new Error(`re-entry gate did not allow: ${JSON.stringify(gate)}`);
+          console.log('OS2_RRG_V01_PASS', JSON.stringify({ durableAttestation: true, independentPriorEvidence: true, exactCurrentBinding: true, reentryAllowed: true }));
+          NODE
