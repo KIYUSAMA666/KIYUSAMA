@@ -4,13 +4,10 @@ import { createRemoteJWKSet, jwtVerify } from "npm:jose@6.1.0";
 
 const AUDIENCE = "kiyusama-os2-recovery-reentry-attestation-v01";
 const ISSUER = "https://token.actions.githubusercontent.com";
-const REPOSITORY = "KIYUSAMA666/KIYUSAMA";
-const ACTOR = "KIYUSAMA666";
-const EVENT = "pull_request";
-const REF = "refs/pull/85/merge";
-const WORKFLOW_PATH = ".github/workflows/os2-recovery-reentry-attestation-v01.yml";
+const POLICY_ID = "OS2-RRG-V01";
 const ISSUE_RPC = "os2_reentry_issue_attestation";
 const READ_RPC = "os2_reentry_read_attestation";
+const POLICY_RPC = "os2_reentry_read_issuer_policy";
 const ATTESTATION_ID = "OS2-RRG-V01-ATTEST-001";
 const STATE_ID = "OS2-PTE-V01-STATE";
 const LINEAGE_ID = "OS2-PTE-V01-LINEAGE";
@@ -33,24 +30,34 @@ function getAdminKey(): string | null {
   }
 }
 
-function expectedSha(): string | null {
-  const value = Deno.env.get("OS2_RRG_V01_EXPECTED_SHA");
-  return value && value.trim() ? value.trim() : null;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function verifyGitHubOidc(req: Request) {
+async function verifyGitHubOidc(req: Request, admin: ReturnType<typeof createClient>) {
+  const { data: policy, error: policyError } = await admin.rpc(POLICY_RPC, { p_policy_id: POLICY_ID });
+  if (policyError || !isRecord(policy)) throw new Error("ISSUER_POLICY_UNAVAILABLE");
+  if (
+    typeof policy.repository !== "string" ||
+    typeof policy.actor !== "string" ||
+    typeof policy.eventName !== "string" ||
+    typeof policy.ref !== "string" ||
+    typeof policy.workflowPath !== "string" ||
+    typeof policy.expectedSha !== "string" ||
+    !policy.expectedSha.trim()
+  ) throw new Error("ISSUER_POLICY_NOT_PINNED");
+
   const auth = req.headers.get("authorization") ?? "";
   if (!auth.startsWith("Bearer ")) throw new Error("OIDC_MISSING");
   const token = auth.slice(7);
   const { payload } = await jwtVerify(token, jwks, { issuer: ISSUER, audience: AUDIENCE });
-  if (payload.repository !== REPOSITORY) throw new Error("OIDC_REPOSITORY_MISMATCH");
-  if (payload.actor !== ACTOR) throw new Error("OIDC_ACTOR_MISMATCH");
-  if (payload.event_name !== EVENT) throw new Error("OIDC_EVENT_MISMATCH");
-  if (payload.ref !== REF) throw new Error("OIDC_REF_MISMATCH");
-  const pinnedSha = expectedSha();
-  if (!pinnedSha || payload.sha !== pinnedSha) throw new Error("OIDC_SHA_MISMATCH");
+  if (payload.repository !== policy.repository) throw new Error("OIDC_REPOSITORY_MISMATCH");
+  if (payload.actor !== policy.actor) throw new Error("OIDC_ACTOR_MISMATCH");
+  if (payload.event_name !== policy.eventName) throw new Error("OIDC_EVENT_MISMATCH");
+  if (payload.ref !== policy.ref) throw new Error("OIDC_REF_MISMATCH");
+  if (payload.sha !== policy.expectedSha) throw new Error("OIDC_SHA_MISMATCH");
   const workflowRef = String(payload.job_workflow_ref ?? "");
-  if (!workflowRef.startsWith(`${REPOSITORY}/${WORKFLOW_PATH}@`)) throw new Error("OIDC_WORKFLOW_MISMATCH");
+  if (!workflowRef.startsWith(`${policy.repository}/${policy.workflowPath}@`)) throw new Error("OIDC_WORKFLOW_MISMATCH");
   return payload;
 }
 
@@ -71,9 +78,14 @@ function exactRequest(body: any): boolean {
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return Response.json({ ok: false, error: "METHOD_NOT_ALLOWED" }, { status: 405 });
 
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = getAdminKey();
+  if (!url || !key) return Response.json({ ok: false, error: "RELAY_NOT_CONFIGURED" }, { status: 503 });
+  const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+
   let github: Record<string, unknown>;
   try {
-    github = await verifyGitHubOidc(req) as Record<string, unknown>;
+    github = await verifyGitHubOidc(req, admin) as Record<string, unknown>;
   } catch (error) {
     return Response.json({ ok: false, error: String((error as Error)?.message ?? "OIDC_REJECTED") }, { status: 401 });
   }
@@ -81,11 +93,6 @@ Deno.serve(async (req: Request) => {
   const body = await req.json().catch(() => null);
   if (!exactRequest(body)) return Response.json({ ok: false, error: "ISOLATION_CONTRACT_REJECTED" }, { status: 400 });
 
-  const url = Deno.env.get("SUPABASE_URL");
-  const key = getAdminKey();
-  if (!url || !key) return Response.json({ ok: false, error: "RELAY_NOT_CONFIGURED" }, { status: 503 });
-
-  const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   const issueRequest = {
     ...body.request,
     issuerRepository: github.repository,
