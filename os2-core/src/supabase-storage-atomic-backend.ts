@@ -1,7 +1,9 @@
 import { assertSnapshotInvariant } from "./current-state.js";
 import {
-  toStorageAtomicCommitCommand,
-  validateStorageAtomicCommitCommand,
+  applyStorageAtomicCommitAsync,
+  type AsyncStorageAtomicCommitBackend,
+} from "./production-async-commit-bridge.js";
+import {
   type StorageAtomicCommitDecision,
   type StorageAtomicCommitCommand,
   type StorageAtomicHoldReason,
@@ -10,6 +12,16 @@ import type { WriteBackAtomicCommit } from "./write-back.js";
 
 export interface SupabaseAtomicRpcClient {
   compareConsumeAndSwap(command: StorageAtomicCommitCommand): Promise<unknown>;
+}
+
+/** Minimal structural contract for the current supabase-js schema().rpc() API. */
+export interface SupabaseJsClientLike {
+  schema(schema: string): {
+    rpc(
+      functionName: string,
+      args: { p_command: StorageAtomicCommitCommand },
+    ): PromiseLike<{ data: unknown; error: unknown | null }>;
+  };
 }
 
 const HOLD_REASONS = new Set<StorageAtomicHoldReason>([
@@ -26,6 +38,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function exactJsonEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function createSupabaseJsAtomicRpcClient(
+  client: SupabaseJsClientLike,
+): SupabaseAtomicRpcClient {
+  return {
+    async compareConsumeAndSwap(command: StorageAtomicCommitCommand): Promise<unknown> {
+      const { data, error } = await client
+        .schema("os2_storage_v01")
+        .rpc("compare_consume_and_swap", { p_command: command });
+      if (error !== null) throw error;
+      return data;
+    },
+  };
 }
 
 export function parseSupabaseAtomicDecision(
@@ -70,18 +96,27 @@ export function parseSupabaseAtomicDecision(
   };
 }
 
+export class SupabaseAsyncAtomicCommitBackend implements AsyncStorageAtomicCommitBackend {
+  constructor(private readonly client: SupabaseAtomicRpcClient) {}
+
+  async compareConsumeAndSwap(
+    command: StorageAtomicCommitCommand,
+  ): Promise<StorageAtomicCommitDecision> {
+    try {
+      const raw = await this.client.compareConsumeAndSwap(command);
+      return parseSupabaseAtomicDecision(raw, command);
+    } catch {
+      return { status: "HOLD", reason: "BACKEND_FAILURE" };
+    }
+  }
+}
+
 export async function applyStorageAtomicCommitWithSupabase(
   client: SupabaseAtomicRpcClient,
   commit: WriteBackAtomicCommit,
 ): Promise<StorageAtomicCommitDecision> {
-  const command = toStorageAtomicCommitCommand(commit);
-  const invalid = validateStorageAtomicCommitCommand(command);
-  if (invalid !== null) return { status: "HOLD", reason: invalid };
-
-  try {
-    const raw = await client.compareConsumeAndSwap(command);
-    return parseSupabaseAtomicDecision(raw, command);
-  } catch {
-    return { status: "HOLD", reason: "BACKEND_FAILURE" };
-  }
+  return applyStorageAtomicCommitAsync(
+    new SupabaseAsyncAtomicCommitBackend(client),
+    commit,
+  );
 }
