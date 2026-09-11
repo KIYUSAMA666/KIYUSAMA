@@ -15,13 +15,15 @@ const allowed: RecoveryReentryGateDecision = {
   stateId: "STATE-001",
   stateRevision: 7,
   commitSequence: 11,
+  attestationId: "ATTEST-001",
   attestationObservedAt: "2026-09-11T13:00:00.000Z",
   attestationSource: "KIRA_INDEPENDENT_GITHUB_OIDC",
+  reentryAuthorityExpiresAt: "2026-09-11T13:01:00.000Z",
 };
 
-function issue(): ReentryAuthorityLease {
+function issue(leaseId = "LEASE-001"): ReentryAuthorityLease {
   const decision = issueReentryAuthorityLease({
-    leaseId: "LEASE-001",
+    leaseId,
     reentryDecision: allowed,
     issuedAt: "2026-09-11T13:00:01.000Z",
     ttlMs: 30_000,
@@ -33,6 +35,7 @@ function issue(): ReentryAuthorityLease {
 function exactRequest(lease: ReentryAuthorityLease): ReentryAuthorityExecutionRequest {
   return {
     leaseId: lease.leaseId,
+    authorityKey: lease.authorityKey,
     actionId: lease.actionId,
     stateId: lease.stateId,
     stateRevision: lease.stateRevision,
@@ -41,7 +44,7 @@ function exactRequest(lease: ReentryAuthorityLease): ReentryAuthorityExecutionRe
 }
 
 class AtomicMemoryBackend implements ReentryAuthorityLeaseClaimBackend {
-  private consumed = new Set<string>();
+  private consumedAuthorities = new Set<string>();
   calls = 0;
 
   async claimExactLease({
@@ -51,6 +54,7 @@ class AtomicMemoryBackend implements ReentryAuthorityLeaseClaimBackend {
     this.calls += 1;
     if (
       lease.leaseId !== request.leaseId ||
+      lease.authorityKey !== request.authorityKey ||
       lease.actionId !== request.actionId ||
       lease.stateId !== request.stateId ||
       lease.stateRevision !== request.stateRevision ||
@@ -58,10 +62,10 @@ class AtomicMemoryBackend implements ReentryAuthorityLeaseClaimBackend {
     ) {
       return { status: "BINDING_MISMATCH" as const };
     }
-    if (this.consumed.has(lease.leaseId)) {
+    if (this.consumedAuthorities.has(lease.authorityKey)) {
       return { status: "ALREADY_CONSUMED" as const };
     }
-    this.consumed.add(lease.leaseId);
+    this.consumedAuthorities.add(lease.authorityKey);
     return { status: "CLAIMED" as const };
   }
 }
@@ -74,17 +78,18 @@ test("1 ALLOW converts to exact short-lived lease", () => {
     ttlMs: 30_000,
   });
   assert.equal(decision.status, "ISSUED");
-  assert.deepEqual(decision.lease, {
-    leaseId: "LEASE-001",
-    actionId: "ACTION-001",
-    stateId: "STATE-001",
-    stateRevision: 7,
-    commitSequence: 11,
-    attestationObservedAt: "2026-09-11T13:00:00.000Z",
-    attestationSource: "KIRA_INDEPENDENT_GITHUB_OIDC",
-    issuedAt: "2026-09-11T13:00:01.000Z",
-    expiresAt: "2026-09-11T13:00:31.000Z",
-  });
+  assert.equal(decision.lease.leaseId, "LEASE-001");
+  assert.equal(decision.lease.actionId, "ACTION-001");
+  assert.equal(decision.lease.stateId, "STATE-001");
+  assert.equal(decision.lease.stateRevision, 7);
+  assert.equal(decision.lease.commitSequence, 11);
+  assert.equal(decision.lease.attestationId, "ATTEST-001");
+  assert.equal(decision.lease.attestationObservedAt, "2026-09-11T13:00:00.000Z");
+  assert.equal(decision.lease.attestationSource, "KIRA_INDEPENDENT_GITHUB_OIDC");
+  assert.equal(decision.lease.reentryAuthorityExpiresAt, "2026-09-11T13:01:00.000Z");
+  assert.equal(decision.lease.issuedAt, "2026-09-11T13:00:01.000Z");
+  assert.equal(decision.lease.expiresAt, "2026-09-11T13:00:31.000Z");
+  assert.ok(decision.lease.authorityKey.includes("OS2_REENTRY_AUTHORITY_V01"));
 });
 
 test("2 HOLD re-entry cannot mint a lease", () => {
@@ -255,4 +260,65 @@ test("11 concurrent duplicate attempts produce at most one ALLOW_EXECUTION", asy
     ).length,
     1,
   );
+});
+
+test("12 different leaseIds from the same re-entry authority still allow only one execution", async () => {
+  const leaseA = issue("LEASE-A");
+  const leaseB = issue("LEASE-B");
+  assert.equal(leaseA.authorityKey, leaseB.authorityKey);
+  const backend = new AtomicMemoryBackend();
+  const [a, b] = await Promise.all([
+    consumeReentryAuthorityLease({
+      lease: leaseA,
+      request: exactRequest(leaseA),
+      now: "2026-09-11T13:00:02.000Z",
+      backend,
+    }),
+    consumeReentryAuthorityLease({
+      lease: leaseB,
+      request: exactRequest(leaseB),
+      now: "2026-09-11T13:00:02.000Z",
+      backend,
+    }),
+  ]);
+  assert.equal([a, b].filter((x) => x.status === "ALLOW_EXECUTION").length, 1);
+  assert.equal(
+    [a, b].filter(
+      (x) => x.status === "HOLD" && x.reason === "LEASE_ALREADY_CONSUMED",
+    ).length,
+    1,
+  );
+});
+
+test("13 stored ALLOW cannot mint a fresh lease after original re-entry authority expires", () => {
+  const decision = issueReentryAuthorityLease({
+    leaseId: "LEASE-LATE",
+    reentryDecision: allowed,
+    issuedAt: "2026-09-11T13:01:00.000Z",
+    ttlMs: 1_000,
+  });
+  assert.deepEqual(decision, { status: "HOLD", reason: "REENTRY_AUTHORITY_EXPIRED" });
+});
+
+test("14 lease cannot extend past original re-entry freshness window", () => {
+  const decision = issueReentryAuthorityLease({
+    leaseId: "LEASE-TOO-LONG",
+    reentryDecision: allowed,
+    issuedAt: "2026-09-11T13:00:50.000Z",
+    ttlMs: 30_000,
+  });
+  assert.deepEqual(decision, { status: "HOLD", reason: "LEASE_EXCEEDS_REENTRY_WINDOW" });
+});
+
+test("15 authorityKey tampering is rejected before backend", async () => {
+  const lease = { ...issue(), authorityKey: "FORGED" };
+  const backend = new AtomicMemoryBackend();
+  const decision = await consumeReentryAuthorityLease({
+    lease,
+    request: exactRequest(lease),
+    now: "2026-09-11T13:00:02.000Z",
+    backend,
+  });
+  assert.deepEqual(decision, { status: "HOLD", reason: "LEASE_BINDING_MISMATCH" });
+  assert.equal(backend.calls, 0);
 });
