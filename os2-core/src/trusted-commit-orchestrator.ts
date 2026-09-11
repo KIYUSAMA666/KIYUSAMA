@@ -3,9 +3,9 @@ import {
   type EndToEndTrustPipelineInput,
 } from "./end-to-end-trust-pipeline.js";
 import {
-  applyStorageAtomicCommit,
-  type StorageAtomicCommitBackend,
-} from "./storage-atomic-commit-adapter.js";
+  applyStorageAtomicCommitAsync,
+  type CompatibleAtomicCommitBackend,
+} from "./production-async-commit-bridge.js";
 import type { WriteBackAtomicCommit } from "./write-back.js";
 
 /**
@@ -37,7 +37,7 @@ export type TrustedCommitOrchestratorDecision =
 
 export interface TrustedCommitOrchestratorInput<T = unknown> {
   pipeline: EndToEndTrustPipelineInput<T>;
-  backend: StorageAtomicCommitBackend;
+  backend: CompatibleAtomicCommitBackend;
 }
 
 function snapshotAtomicCommit(commit: WriteBackAtomicCommit): WriteBackAtomicCommit {
@@ -61,7 +61,7 @@ export async function executeTrustedCommit<T = unknown>(
   // The backend must never observe a post-validation mutation of caller-owned input.
   const verifiedCommit = snapshotAtomicCommit(pipelineDecision.atomicCommit);
   const backend = input.backend;
-  const commitDecision = await applyStorageAtomicCommit(backend, verifiedCommit);
+  const commitDecision = await applyStorageAtomicCommitAsync(backend, verifiedCommit);
   if (commitDecision.status !== "COMMITTED") {
     return {
       status: "HOLD",
