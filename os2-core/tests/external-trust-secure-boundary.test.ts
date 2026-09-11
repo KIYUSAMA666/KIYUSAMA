@@ -288,12 +288,12 @@ test("18 runtime non-string revoked proof-key id fails closed before RPC", async
     readTrustBoundary: unusedRead,
     async advanceRevocationWatermarkAuthenticated() { calls += 1; return provider("ADVANCED"); },
   };
-  const malformed = snapshot() as SignedRevocationSnapshot & { revokedProofKeyIds: unknown[] };
-  malformed.revokedProofKeyIds = ["KEY-X", 42];
+  const malformed = snapshot();
+  (malformed as unknown as { revokedProofKeyIds: unknown[] }).revokedProofKeyIds = ["KEY-X", 42];
   assert.deepEqual(await advanceExternalTrustWatermarkAuthenticated(
     client,
     boundary(),
-    malformed as SignedRevocationSnapshot,
+    malformed,
   ), { status: "HOLD", reason: "REVOCATION_EVIDENCE_INVALID" });
   assert.equal(calls, 0);
 });
