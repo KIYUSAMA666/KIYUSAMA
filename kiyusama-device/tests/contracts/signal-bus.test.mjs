@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{validateSignalEnvelope}from'../../dist/contracts/signal-bus.js';test('accepts signal bus envelope',()=>assert.equal(validateSignalEnvelope({signal_id:'s1',correlation_id:'c1',source:'receiver',target:'executor',payload_ref:'p1',evidence_refs:['e1'],received_at:'2026-09-06T22:00:00+09:00'}).ok,true));

@@ -1,0 +1,1 @@
+import{kernelHealth,type KernelHealth}from'./kernel-health.js';export function bootOs2(health:KernelHealth){const h=kernelHealth(health);return h.ready?{booted:true,state:'AUTHENTICATED_OS2',failed:[]}:{booted:false,state:'INTEGRITY_HOLD',failed:h.failed}}

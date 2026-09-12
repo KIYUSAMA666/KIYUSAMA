@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{consumeExecutionBudget}from'../../dist/contracts/index.js';test('execution budget guard is exported',()=>assert.equal(typeof consumeExecutionBudget,'function'));

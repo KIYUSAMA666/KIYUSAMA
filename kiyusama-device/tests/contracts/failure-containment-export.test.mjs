@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{containFailure}from'../../dist/contracts/index.js';test('failure containment is exported',()=>assert.equal(typeof containFailure,'function'));

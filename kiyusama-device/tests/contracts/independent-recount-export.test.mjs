@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{independentRecount}from'../../dist/contracts/index.js';test('independent recount is exported',()=>assert.equal(typeof independentRecount,'function'));

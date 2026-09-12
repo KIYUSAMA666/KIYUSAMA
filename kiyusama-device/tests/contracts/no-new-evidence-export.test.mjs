@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{retryCredit}from'../../dist/contracts/index.js';test('retry credit rule is exported',()=>assert.equal(typeof retryCredit,'function'));

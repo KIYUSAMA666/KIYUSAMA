@@ -1,0 +1,3 @@
+import test from'node:test';import assert from'node:assert/strict';import fs from'node:fs';
+test('index does not contain a second memory continuation implementation',()=>{const src=fs.readFileSync(new URL('../../packages/contracts/src/index.ts',import.meta.url),'utf8');assert.equal(src.includes("schema_version: 'kiyusama-memory/2.0-draft1'"),false);assert.equal(src.includes("export * from './memory-continuation.js'"),true)});
+test('legacy TONTON remains explicitly non-canonical',()=>{const src=fs.readFileSync(new URL('../../packages/contracts/src/index.ts',import.meta.url),'utf8');assert.equal(src.includes('never final OS 2.0 topology'),true);assert.equal(src.includes('tonton-stage/2.0'),false)});

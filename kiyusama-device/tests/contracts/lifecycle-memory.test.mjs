@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { appendLifecycleTransition, resolveLifecycleCurrentState } from '../../dist/contracts/lifecycle-memory.js';
+const base={lifecycle_id:'demon-1',subject:'Trash Demon',actor:'SORA',cause:'observed',evidence_refs:[{ref:'evidence:1'}],verification_status:'VERIFIED',supersedes_sequence:null};
+const born={...base,sequence:1,state:'BORN',previous_state:null,occurred_at:'2026-09-03T09:13:00+09:00'};
+const active={...base,sequence:2,state:'OBSERVED_ACTIVE',previous_state:'BORN',occurred_at:'2026-09-03T09:14:00+09:00'};
+const migrated={...base,sequence:3,state:'MIGRATED',previous_state:'OBSERVED_ACTIVE',occurred_at:'2026-09-03T09:15:00+09:00',destination_ref:'component:new-heart'};
+test('preserves every true historical state while resolving current state',()=>{let h=appendLifecycleTransition([],born);h=appendLifecycleTransition(h,active);h=appendLifecycleTransition(h,migrated);const r=resolveLifecycleCurrentState(h);assert.equal(r.current.state,'MIGRATED');assert.deepEqual(r.history.map(x=>x.state),['BORN','OBSERVED_ACTIVE','MIGRATED'])});
+test('rejects missing transition so an old snapshot cannot masquerade as current',()=>assert.throws(()=>appendLifecycleTransition([born],{...migrated,sequence:3,previous_state:'OBSERVED_ACTIVE'}),/NON_CONTIGUOUS/));
+test('migration requires destination trace',()=>assert.throws(()=>appendLifecycleTransition([born],{...base,sequence:2,state:'MIGRATED',previous_state:'BORN',occurred_at:'2026-09-03T09:15:00+09:00'}),/MIGRATION_REQUIRES_DESTINATION/));
+test('recovery rejects a history whose first visible transition is not the origin',()=>assert.throws(()=>resolveLifecycleCurrentState([{...active,sequence:2,previous_state:'BORN'}]),/INVALID_LIFECYCLE_ORIGIN/));
+test('recovery rejects identity changes inside one lifecycle chain',()=>assert.throws(()=>resolveLifecycleCurrentState([born,{...active,lifecycle_id:'demon-2'}]),/LIFECYCLE_IDENTITY_MISMATCH/));

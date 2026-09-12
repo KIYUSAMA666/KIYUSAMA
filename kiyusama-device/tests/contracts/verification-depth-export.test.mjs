@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{requiredVerificationDepth}from'../../dist/contracts/index.js';test('verification depth budget is exported',()=>assert.equal(typeof requiredVerificationDepth,'function'));
