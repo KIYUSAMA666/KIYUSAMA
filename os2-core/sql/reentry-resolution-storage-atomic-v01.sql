@@ -40,6 +40,9 @@ create unique index if not exists resolution_receipts_binding_uq
   on os2_reentry_v01.resolution_receipts
   (lease_id, action_id, state_id, state_revision, commit_sequence, result_id, handoff_id, unknown_observed_at, finalized_at);
 
+grant select, insert, update on table os2_reentry_v01.unknown_outcomes to service_role;
+grant select, insert, update on table os2_reentry_v01.resolution_receipts to service_role;
+
 create or replace function public.os2_reentry_close_unknown_with_resolution_receipt(p_input jsonb)
 returns jsonb
 language plpgsql
