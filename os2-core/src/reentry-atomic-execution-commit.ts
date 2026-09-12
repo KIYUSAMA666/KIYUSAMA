@@ -50,15 +50,36 @@ export interface ReentryAtomicExecutionCommitInput<T = unknown> {
   backend: ReentryAtomicExecutionCommitBackend;
 }
 
-function snapshotAtomicCommit(commit: WriteBackAtomicCommit): WriteBackAtomicCommit {
-  return JSON.parse(JSON.stringify(commit)) as WriteBackAtomicCommit;
+function snapshot<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function isPipelineLeaseBindingExact<T>(
+  pipeline: EndToEndTrustPipelineInput<T>,
+  lease: ReentryAuthorityLease,
+  atomicCommit: WriteBackAtomicCommit,
+): boolean {
+  return (
+    lease.actionId === pipeline.handoff.actionId &&
+    lease.actionId === pipeline.actionEvidenceRequirement.actionId &&
+    lease.stateId === pipeline.snapshot.identity.stateId &&
+    lease.stateRevision === pipeline.snapshot.identity.stateRevision &&
+    atomicCommit.expectedCurrent.expectedCurrentStateId === lease.stateId &&
+    atomicCommit.expectedCurrent.expectedCurrentRevision === lease.stateRevision
+  );
 }
 
 /**
  * Trust validation happens before authority consumption. Once the pipeline is
- * READY_TO_COMMIT, the verified commit is deep-snapshotted before the backend
- * is observed, then the existing lease validator is used with a claim backend
- * whose single operation is authority-claim + commit atomically.
+ * READY_TO_COMMIT, the verified commit plus lease/request are snapshotted before
+ * the backend is observed. This preserves the existing trusted-commit TOCTOU
+ * rule and also prevents a hostile backend getter from swapping authority input.
+ *
+ * The local binding check closes a cross-action/state substitution seam: a valid
+ * lease for one recovered action/state cannot authorize a different verified
+ * pipeline commit. The database backend must additionally re-check CURRENT
+ * state/revision/commitSequence and perform authority claim + result/handoff
+ * consumption + CURRENT swap in one transaction.
  */
 export async function executeReentryAtomicExecutionCommit<T = unknown>(
   input: ReentryAtomicExecutionCommitInput<T>,
@@ -73,14 +94,29 @@ export async function executeReentryAtomicExecutionCommit<T = unknown>(
     };
   }
 
-  // Snapshot before reading backend to preserve the trusted-commit TOCTOU rule.
-  const verifiedCommit = snapshotAtomicCommit(pipelineDecision.atomicCommit);
+  const verifiedCommit = snapshot(pipelineDecision.atomicCommit);
+  const verifiedLease = snapshot(input.lease);
+  const verifiedRequest = snapshot(input.request);
+  const verifiedNow = input.now;
+
+  if (!isPipelineLeaseBindingExact(input.pipeline, verifiedLease, verifiedCommit)) {
+    return {
+      status: "HOLD",
+      stage: "AUTHORITY",
+      reason: "PIPELINE_LEASE_BINDING_MISMATCH",
+    };
+  }
+
+  // Access backend only after all trusted inputs needed for the backend call are
+  // snapshotted. Caller-controlled getters cannot mutate what reaches storage.
   const backend = input.backend;
   let committedSequence: number | null = null;
   let commitRejectedReason: string | null = null;
+  let backendInvoked = false;
 
   const atomicClaimBackend: ReentryAuthorityLeaseClaimBackend = {
     async claimExactLease(claimInput) {
+      backendInvoked = true;
       const result = await backend.claimAuthorityAndCommit({
         ...claimInput,
         atomicCommit: verifiedCommit,
@@ -101,9 +137,9 @@ export async function executeReentryAtomicExecutionCommit<T = unknown>(
   };
 
   const authorityDecision = await consumeReentryAuthorityLease({
-    lease: input.lease,
-    request: input.request,
-    now: input.now,
+    lease: verifiedLease,
+    request: verifiedRequest,
+    now: verifiedNow,
     backend: atomicClaimBackend,
   });
 
@@ -115,6 +151,16 @@ export async function executeReentryAtomicExecutionCommit<T = unknown>(
         reason: commitRejectedReason,
       };
     }
+    if (
+      backendInvoked &&
+      authorityDecision.reason === "LEASE_CLAIM_BACKEND_FAILURE"
+    ) {
+      return {
+        status: "HOLD",
+        stage: "ATOMIC_COMMIT",
+        reason: "BACKEND_FAILURE",
+      };
+    }
     return {
       status: "HOLD",
       stage: "AUTHORITY",
@@ -122,7 +168,11 @@ export async function executeReentryAtomicExecutionCommit<T = unknown>(
     };
   }
 
-  if (committedSequence === null || !Number.isInteger(committedSequence) || committedSequence < 0) {
+  if (
+    committedSequence === null ||
+    !Number.isInteger(committedSequence) ||
+    committedSequence < 0
+  ) {
     return {
       status: "HOLD",
       stage: "ATOMIC_COMMIT",
