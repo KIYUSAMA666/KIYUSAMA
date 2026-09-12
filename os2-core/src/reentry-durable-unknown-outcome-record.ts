@@ -11,6 +11,17 @@ import {
 import type { ReentryDurableCommitReceiptBackend } from "./reentry-durable-commit-receipt.js";
 import type { WriteBackAtomicCommit } from "./write-back.js";
 
+/**
+ * RE-ENTRY DURABLE UNKNOWN OUTCOME RECORD v0.1
+ *
+ * UNKNOWN_OUTCOME is a safety state, not a transient in-memory error. If the
+ * process restarts after an ambiguous atomic RPC, the system must recover the
+ * fact that this authority is unresolved and must never infer permission to
+ * execute the commit again. This layer durably records the exact unresolved
+ * binding and later resumes receipt-only finalization from that record.
+ *
+ * No commit backend exists anywhere in this API.
+ */
 export const REENTRY_UNKNOWN_OUTCOME_RECORD_VERSION =
   "OS2_REENTRY_UNKNOWN_OUTCOME_RECORD_V01" as const;
 
@@ -42,7 +53,11 @@ export interface ReentryDurableUnknownOutcomeRecordBackend {
 }
 
 export type ReentryUnknownOutcomeRecordDecision =
-  | { status: "RECORDED"; authorityKey: string; recordVersion: typeof REENTRY_UNKNOWN_OUTCOME_RECORD_VERSION }
+  | {
+      status: "RECORDED";
+      authorityKey: string;
+      recordVersion: typeof REENTRY_UNKNOWN_OUTCOME_RECORD_VERSION;
+    }
   | {
       status: "HOLD";
       stage: "UNKNOWN_OUTCOME_RECORD";
@@ -79,6 +94,7 @@ function protocolValid(record: ReentryDurableUnknownOutcomeRecord): boolean {
   return (
     record.recordVersion === REENTRY_UNKNOWN_OUTCOME_RECORD_VERSION &&
     typeof record.authorityKey === "string" &&
+    record.authorityKey.length > 0 &&
     typeof record.leaseId === "string" &&
     typeof record.actionId === "string" &&
     typeof record.stateId === "string" &&
@@ -86,7 +102,8 @@ function protocolValid(record: ReentryDurableUnknownOutcomeRecord): boolean {
     Number.isInteger(record.commitSequence) &&
     typeof record.resultId === "string" &&
     typeof record.handoffId === "string" &&
-    (record.reason === "RECEIPT_NOT_FOUND" || record.reason === "RECEIPT_BACKEND_FAILURE") &&
+    (record.reason === "RECEIPT_NOT_FOUND" ||
+      record.reason === "RECEIPT_BACKEND_FAILURE") &&
     typeof record.observedAt === "string" &&
     Number.isFinite(Date.parse(record.observedAt))
   );
@@ -118,10 +135,10 @@ function sameRecord(
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-export async function recordReentryUnknownOutcomeFromVerifiedPipeline<T = unknown>(input: {
+export async function recordObservedReentryUnknownOutcome(input: {
   previousDecision: ReentryReconciledCommitDecision;
-  pipeline: EndToEndTrustPipelineInput<T>;
   lease: ReentryAuthorityLease;
+  atomicCommit: WriteBackAtomicCommit;
   observedAt: string;
   recordBackend: ReentryDurableUnknownOutcomeRecordBackend;
 }): Promise<ReentryUnknownOutcomeRecordDecision> {
@@ -150,16 +167,6 @@ export async function recordReentryUnknownOutcomeFromVerifiedPipeline<T = unknow
     };
   }
 
-  const preflight = evaluateEndToEndTrustPipeline(input.pipeline);
-  if (preflight.status !== "READY_TO_COMMIT") {
-    return {
-      status: "HOLD",
-      stage: "UNKNOWN_OUTCOME_RECORD",
-      reason: "VERIFIED_ATOMIC_COMMIT_UNAVAILABLE",
-      retryDisposition: "DO_NOT_RETRY",
-    };
-  }
-
   const record: ReentryDurableUnknownOutcomeRecord = {
     recordVersion: REENTRY_UNKNOWN_OUTCOME_RECORD_VERSION,
     authorityKey: input.lease.authorityKey,
@@ -168,11 +175,20 @@ export async function recordReentryUnknownOutcomeFromVerifiedPipeline<T = unknow
     stateId: input.lease.stateId,
     stateRevision: input.lease.stateRevision,
     commitSequence: input.lease.commitSequence,
-    resultId: preflight.atomicCommit.consumeResultId,
-    handoffId: preflight.atomicCommit.consumeHandoffId,
+    resultId: input.atomicCommit.consumeResultId,
+    handoffId: input.atomicCommit.consumeHandoffId,
     reason: input.previousDecision.reason,
     observedAt: input.observedAt,
   };
+
+  if (!exactBinding(record, input.lease, input.atomicCommit)) {
+    return {
+      status: "HOLD",
+      stage: "UNKNOWN_OUTCOME_RECORD",
+      reason: "RECORD_BINDING_MISMATCH",
+      retryDisposition: "DO_NOT_RETRY",
+    };
+  }
 
   let written:
     | { status: "STORED" }
@@ -223,22 +239,37 @@ export async function recordReentryUnknownOutcomeFromVerifiedPipeline<T = unknow
   };
 }
 
-export async function resumeReentryUnknownOutcomeFromDurableRecord<T = unknown>(input: {
+export async function recordReentryUnknownOutcomeFromVerifiedPipeline<T = unknown>(input: {
+  previousDecision: ReentryReconciledCommitDecision;
   pipeline: EndToEndTrustPipelineInput<T>;
   lease: ReentryAuthorityLease;
+  observedAt: string;
   recordBackend: ReentryDurableUnknownOutcomeRecordBackend;
-  receiptBackend: ReentryDurableCommitReceiptBackend;
-}): Promise<ReentryUnknownOutcomeResumeDecision> {
+}): Promise<ReentryUnknownOutcomeRecordDecision> {
   const preflight = evaluateEndToEndTrustPipeline(input.pipeline);
   if (preflight.status !== "READY_TO_COMMIT") {
     return {
       status: "HOLD",
-      stage: "UNKNOWN_OUTCOME_RESUME",
+      stage: "UNKNOWN_OUTCOME_RECORD",
       reason: "VERIFIED_ATOMIC_COMMIT_UNAVAILABLE",
       retryDisposition: "DO_NOT_RETRY",
     };
   }
+  return recordObservedReentryUnknownOutcome({
+    previousDecision: snapshot(input.previousDecision),
+    lease: snapshot(input.lease),
+    atomicCommit: snapshot(preflight.atomicCommit),
+    observedAt: input.observedAt,
+    recordBackend: input.recordBackend,
+  });
+}
 
+export async function resumeObservedReentryUnknownOutcomeFromDurableRecord(input: {
+  lease: ReentryAuthorityLease;
+  atomicCommit: WriteBackAtomicCommit;
+  recordBackend: ReentryDurableUnknownOutcomeRecordBackend;
+  receiptBackend: ReentryDurableCommitReceiptBackend;
+}): Promise<ReentryUnknownOutcomeResumeDecision> {
   let loaded:
     | { status: "FOUND"; record: ReentryDurableUnknownOutcomeRecord }
     | { status: "NOT_FOUND" }
@@ -278,7 +309,7 @@ export async function resumeReentryUnknownOutcomeFromDurableRecord<T = unknown>(
       retryDisposition: "DO_NOT_RETRY",
     };
   }
-  if (!exactBinding(loaded.record, input.lease, preflight.atomicCommit)) {
+  if (!exactBinding(loaded.record, input.lease, input.atomicCommit)) {
     return {
       status: "HOLD",
       stage: "UNKNOWN_OUTCOME_RESUME",
@@ -297,7 +328,30 @@ export async function resumeReentryUnknownOutcomeFromDurableRecord<T = unknown>(
   return finalizeObservedReentryUnknownOutcome({
     previousDecision,
     lease: snapshot(input.lease),
+    atomicCommit: snapshot(input.atomicCommit),
+    receiptBackend: input.receiptBackend,
+  });
+}
+
+export async function resumeReentryUnknownOutcomeFromDurableRecord<T = unknown>(input: {
+  pipeline: EndToEndTrustPipelineInput<T>;
+  lease: ReentryAuthorityLease;
+  recordBackend: ReentryDurableUnknownOutcomeRecordBackend;
+  receiptBackend: ReentryDurableCommitReceiptBackend;
+}): Promise<ReentryUnknownOutcomeResumeDecision> {
+  const preflight = evaluateEndToEndTrustPipeline(input.pipeline);
+  if (preflight.status !== "READY_TO_COMMIT") {
+    return {
+      status: "HOLD",
+      stage: "UNKNOWN_OUTCOME_RESUME",
+      reason: "VERIFIED_ATOMIC_COMMIT_UNAVAILABLE",
+      retryDisposition: "DO_NOT_RETRY",
+    };
+  }
+  return resumeObservedReentryUnknownOutcomeFromDurableRecord({
+    lease: snapshot(input.lease),
     atomicCommit: snapshot(preflight.atomicCommit),
+    recordBackend: input.recordBackend,
     receiptBackend: input.receiptBackend,
   });
 }
