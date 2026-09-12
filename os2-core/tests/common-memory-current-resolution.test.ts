@@ -177,3 +177,27 @@ test("14 object-key reordering at same revision remains equivalent", () => {
   assert.equal(decision.status, "RESOLVED");
   assert.equal(decision.snapshot.identity.stateRevision, 3);
 });
+
+test("15 malformed active guard entry holds", () => {
+  const bad = snapshot(2);
+  bad.activeGuards = [{ guardId: "G1", rule: "guard", refConfirmed: "FORGED" }];
+  const decision = resolveCommonMemoryCurrent([memory("BAD", "CURRENT", bad)]);
+  assert.equal(decision.status, "HOLD");
+  assert.equal(decision.reason, "INVALID_CURRENT_PAYLOAD");
+});
+
+test("16 malformed confirmed ref entry holds", () => {
+  const bad = snapshot(2);
+  bad.confirmedRefIndex = [{ id: "REF1", status: "VERIFIED", expectedVersion: 7, path: null }];
+  const decision = resolveCommonMemoryCurrent([memory("BAD", "CURRENT", bad)]);
+  assert.equal(decision.status, "HOLD");
+  assert.equal(decision.reason, "INVALID_CURRENT_PAYLOAD");
+});
+
+test("17 malformed active role value holds", () => {
+  const bad = snapshot(2);
+  bad.activeRolesAndAuthority = { SORA: 42 };
+  const decision = resolveCommonMemoryCurrent([memory("BAD", "CURRENT", bad)]);
+  assert.equal(decision.status, "HOLD");
+  assert.equal(decision.reason, "INVALID_CURRENT_PAYLOAD");
+});
