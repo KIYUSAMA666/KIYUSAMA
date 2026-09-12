@@ -9,7 +9,12 @@ import { REENTRY_UNKNOWN_OUTCOME_RECORD_VERSION } from "../src/reentry-durable-u
 const lease = {
   leaseVersion: "OS2_REENTRY_AUTHORITY_LEASE_V01" as const,
   leaseId: "lease-1", authorityKey: "auth-1", actionId: "action-1", stateId: "state-1",
-  stateRevision: 7, commitSequence: 8, issuedAt: "2026-09-12T11:00:00.000Z",
+  stateRevision: 7, commitSequence: 8,
+  attestationId: "attestation-1",
+  attestationObservedAt: "2026-09-12T10:59:00.000Z",
+  attestationSource: "KIRA",
+  reentryAuthorityExpiresAt: "2026-09-12T11:20:00.000Z",
+  issuedAt: "2026-09-12T11:00:00.000Z",
   expiresAt: "2026-09-12T11:10:00.000Z",
 };
 const record = {
