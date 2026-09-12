@@ -20,6 +20,11 @@ test("creates durable resolution receipt storage", () => {
   mustContain("check (finalized_at >= unknown_observed_at)");
 });
 
+test("grants only required resolution storage table privileges to service_role", () => {
+  mustContain("grant select, insert, update on table os2_reentry_v01.unknown_outcomes to service_role");
+  mustContain("grant select, insert, update on table os2_reentry_v01.resolution_receipts to service_role");
+});
+
 test("uses one PostgreSQL RPC boundary", () => {
   mustContain("create or replace function public.os2_reentry_close_unknown_with_resolution_receipt(p_input jsonb)");
   mustContain("language plpgsql");
