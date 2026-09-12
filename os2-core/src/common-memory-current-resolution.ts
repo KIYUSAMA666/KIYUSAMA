@@ -2,6 +2,9 @@ import {
   assertSnapshotInvariant,
   selectCurrentSnapshot,
   type CurrentStateSnapshot,
+  type EvidenceVerdict,
+  type LaneStatus,
+  type RefStatus,
 } from "./current-state.js";
 import {
   selectExecutionCandidates,
@@ -40,8 +43,58 @@ function nonEmpty(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function isRuntimeCurrentStateSnapshot(value: unknown): value is CurrentStateSnapshot {
-  if (!isRecord(value)) return false;
+function isIsoTime(value: unknown): value is string {
+  return nonEmpty(value) && Number.isFinite(Date.parse(value));
+}
+
+function parseStringRecord(value: unknown): Readonly<Record<string, string>> | null {
+  if (!isRecord(value)) return null;
+  const entries = Object.entries(value);
+  if (entries.some(([key, entry]) => !nonEmpty(key) || !nonEmpty(entry))) return null;
+  return Object.fromEntries(entries) as Readonly<Record<string, string>>;
+}
+
+function parseActiveGuards(value: unknown): CurrentStateSnapshot["activeGuards"] | null {
+  if (!Array.isArray(value)) return null;
+  const guards: Array<{ guardId: string; rule: string; refConfirmed: RefStatus }> = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) return null;
+    if (!nonEmpty(entry.guardId) || !nonEmpty(entry.rule)) return null;
+    if (entry.refConfirmed !== "VERIFIED" && entry.refConfirmed !== "UNVERIFIED_REF") return null;
+    guards.push({
+      guardId: entry.guardId,
+      rule: entry.rule,
+      refConfirmed: entry.refConfirmed,
+    });
+  }
+  return guards;
+}
+
+function parseConfirmedRefIndex(value: unknown): CurrentStateSnapshot["confirmedRefIndex"] | null {
+  if (!Array.isArray(value)) return null;
+  const refs: Array<{
+    id: string;
+    status: RefStatus;
+    expectedVersion: string | null;
+    path: string | null;
+  }> = [];
+  for (const entry of value) {
+    if (!isRecord(entry) || !nonEmpty(entry.id)) return null;
+    if (entry.status !== "VERIFIED" && entry.status !== "UNVERIFIED_REF") return null;
+    if (!(entry.expectedVersion === null || nonEmpty(entry.expectedVersion))) return null;
+    if (!(entry.path === null || nonEmpty(entry.path))) return null;
+    refs.push({
+      id: entry.id,
+      status: entry.status,
+      expectedVersion: entry.expectedVersion,
+      path: entry.path,
+    });
+  }
+  return refs;
+}
+
+function parseRuntimeCurrentStateSnapshot(value: unknown): CurrentStateSnapshot | null {
+  if (!isRecord(value)) return null;
   const identity = value.identity;
   const humanDecisionFinal = value.humanDecisionFinal;
   const mainLineTask = value.mainLineTask;
@@ -54,18 +107,17 @@ function isRuntimeCurrentStateSnapshot(value: unknown): value is CurrentStateSna
     !nonEmpty(identity.schemaVersion) ||
     !Number.isInteger(identity.stateRevision) ||
     (identity.stateRevision as number) < 1 ||
-    !nonEmpty(identity.effectiveAt) ||
-    !Number.isFinite(Date.parse(identity.effectiveAt as string)) ||
+    !isIsoTime(identity.effectiveAt) ||
     identity.scope !== "KIYUSAMA_OS_2" ||
     !nonEmpty(identity.lineageId)
-  ) return false;
+  ) return null;
 
   if (
     !isRecord(humanDecisionFinal) ||
     !nonEmpty(humanDecisionFinal.decisionId) ||
     humanDecisionFinal.sourceAuthority !== "KIYUSAMA" ||
     !nonEmpty(humanDecisionFinal.shortDirective)
-  ) return false;
+  ) return null;
 
   if (
     !isRecord(mainLineTask) ||
@@ -74,31 +126,69 @@ function isRuntimeCurrentStateSnapshot(value: unknown): value is CurrentStateSna
     !isRecord(nextActionSingle) ||
     !nonEmpty(nextActionSingle.actionId) ||
     !nonEmpty(nextActionSingle.description)
-  ) return false;
+  ) return null;
 
-  if (!isRecord(value.activeRolesAndAuthority)) return false;
-  if (!Array.isArray(value.activeGuards) || !Array.isArray(value.confirmedRefIndex)) return false;
+  const activeRolesAndAuthority = parseStringRecord(value.activeRolesAndAuthority);
+  const activeGuards = parseActiveGuards(value.activeGuards);
+  const confirmedRefIndex = parseConfirmedRefIndex(value.confirmedRefIndex);
+  if (activeRolesAndAuthority === null || activeGuards === null || confirmedRefIndex === null) return null;
 
+  if (!isRecord(independentLaneHealth)) return null;
+  const laneStatus = independentLaneHealth.status;
+  const evidenceVerdict = independentLaneHealth.evidenceVerdict;
   if (
-    !isRecord(independentLaneHealth) ||
-    !["VERIFIED", "UNVERIFIED", "HOLD", "FAIL"].includes(
-      independentLaneHealth.status as string,
-    ) ||
-    !["SUFFICIENT", "INSUFFICIENT", "CONFLICT"].includes(
-      independentLaneHealth.evidenceVerdict as string,
-    ) ||
-    !(independentLaneHealth.observedAt === null ||
-      (nonEmpty(independentLaneHealth.observedAt) &&
-        Number.isFinite(Date.parse(independentLaneHealth.observedAt)))) ||
-    !nonEmpty(independentLaneHealth.evidenceSource)
-  ) return false;
+    laneStatus !== "VERIFIED" &&
+    laneStatus !== "UNVERIFIED" &&
+    laneStatus !== "HOLD" &&
+    laneStatus !== "FAIL"
+  ) return null;
+  if (
+    evidenceVerdict !== "SUFFICIENT" &&
+    evidenceVerdict !== "INSUFFICIENT" &&
+    evidenceVerdict !== "CONFLICT"
+  ) return null;
+  if (!(independentLaneHealth.observedAt === null || isIsoTime(independentLaneHealth.observedAt))) return null;
+  if (!nonEmpty(independentLaneHealth.evidenceSource)) return null;
+
+  const snapshot: CurrentStateSnapshot = {
+    identity: {
+      stateId: identity.stateId,
+      schemaVersion: identity.schemaVersion,
+      stateRevision: identity.stateRevision as number,
+      effectiveAt: identity.effectiveAt,
+      scope: "KIYUSAMA_OS_2",
+      lineageId: identity.lineageId,
+    },
+    humanDecisionFinal: {
+      decisionId: humanDecisionFinal.decisionId,
+      sourceAuthority: "KIYUSAMA",
+      shortDirective: humanDecisionFinal.shortDirective,
+    },
+    mainLineTask: {
+      taskId: mainLineTask.taskId,
+      description: mainLineTask.description,
+    },
+    nextActionSingle: {
+      actionId: nextActionSingle.actionId,
+      description: nextActionSingle.description,
+    },
+    activeRolesAndAuthority,
+    activeGuards,
+    confirmedRefIndex,
+    independentLaneHealth: {
+      status: laneStatus as LaneStatus,
+      evidenceVerdict: evidenceVerdict as EvidenceVerdict,
+      observedAt: independentLaneHealth.observedAt,
+      evidenceSource: independentLaneHealth.evidenceSource,
+    },
+  };
 
   try {
-    assertSnapshotInvariant(value as CurrentStateSnapshot);
+    assertSnapshotInvariant(snapshot);
   } catch {
-    return false;
+    return null;
   }
-  return true;
+  return snapshot;
 }
 
 /**
@@ -122,14 +212,22 @@ export function resolveCommonMemoryCurrent(
 
   const parsed: Array<{ id: string; snapshot: CurrentStateSnapshot }> = [];
   for (const record of currentRecords) {
-    if (!nonEmpty(record.id) || !isRuntimeCurrentStateSnapshot(record.payload)) {
+    if (!nonEmpty(record.id)) {
       return {
         status: "HOLD",
         reason: "INVALID_CURRENT_PAYLOAD",
         resolutionVersion: COMMON_MEMORY_CURRENT_RESOLUTION_V01,
       };
     }
-    parsed.push({ id: record.id, snapshot: record.payload });
+    const snapshot = parseRuntimeCurrentStateSnapshot(record.payload);
+    if (snapshot === null) {
+      return {
+        status: "HOLD",
+        reason: "INVALID_CURRENT_PAYLOAD",
+        resolutionVersion: COMMON_MEMORY_CURRENT_RESOLUTION_V01,
+      };
+    }
+    parsed.push({ id: record.id, snapshot });
   }
 
   const stateId = parsed[0]!.snapshot.identity.stateId;
