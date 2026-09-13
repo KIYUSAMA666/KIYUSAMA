@@ -125,7 +125,7 @@ function parseWriteBackProvenance(value: unknown): WriteBackProvenance | null {
   };
 }
 
-function canonicalizeWriteBackCandidate(
+export function canonicalizeWriteBackCandidate(
   candidate: WriteBackCurrentStateCandidate,
 ): WriteBackCurrentStateCandidate | null {
   const snapshot = parseRuntimeCurrentStateSnapshot(candidate);

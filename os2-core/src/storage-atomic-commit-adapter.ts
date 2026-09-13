@@ -1,5 +1,9 @@
-import { assertSnapshotInvariant, type CurrentStateSnapshot } from "./current-state.js";
-import type { WriteBackAtomicCommit, WriteBackCurrentStateCandidate } from "./write-back.js";
+import { type CurrentStateSnapshot } from "./current-state.js";
+import {
+  canonicalizeWriteBackCandidate,
+  type WriteBackAtomicCommit,
+  type WriteBackCurrentStateCandidate,
+} from "./write-back.js";
 
 /**
  * STORAGE ATOMIC COMMIT ADAPTER v0.1
@@ -55,6 +59,26 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalJson(value[key])]),
+    );
+  }
+  return value;
+}
+
+function exactJsonEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(canonicalJson(a)) === JSON.stringify(canonicalJson(b));
+}
+
 export function toStorageAtomicCommitCommand(commit: WriteBackAtomicCommit): StorageAtomicCommitCommand {
   return {
     expectedCurrentStateId: commit.expectedCurrent.expectedCurrentStateId,
@@ -78,13 +102,15 @@ export function validateStorageAtomicCommitCommand(
     return "INVALID_ATOMIC_COMMIT";
   }
 
-  try {
-    assertSnapshotInvariant(command.nextCurrent);
-  } catch {
+  const canonicalCandidate = canonicalizeWriteBackCandidate(command.nextCurrent);
+  if (
+    canonicalCandidate === null ||
+    !exactJsonEqual(canonicalCandidate, command.nextCurrent)
+  ) {
     return "INVALID_ATOMIC_COMMIT";
   }
 
-  const candidate = command.nextCurrent;
+  const candidate = canonicalCandidate;
   if (
     candidate.identity.stateId !== command.expectedCurrentStateId ||
     candidate.identity.stateRevision !== command.expectedCurrentRevision + 1 ||
