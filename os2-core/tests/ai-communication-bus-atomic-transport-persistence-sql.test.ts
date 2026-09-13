@@ -39,9 +39,17 @@ test("migration ordering dependency on existing durable BUS messages is explicit
   assert.match(sql, /MIGRATION ORDER: os2_bus_v01\.messages must already exist/i);
 });
 
-test("existing message and evidence rows are locked before idempotency decision", () => {
+test("existing BUS message identity remains row-locked before idempotency decision", () => {
   assert.match(sql, /from os2_bus_v01\.messages[\s\S]*where message_id = v_message_id[\s\S]*for update/i);
-  assert.match(sql, /from os2_bus_v01\.transport_evidence[\s\S]*where message_id = v_message_id[\s\S]*for update/i);
+});
+
+test("transport evidence replay preserves least privilege without UPDATE locking", () => {
+  assert.match(sql, /service_role intentionally receives only[\s\S]*SELECT \+ INSERT, never UPDATE/i);
+  assert.match(sql, /ON CONFLICT DO NOTHING already waits for a[\s\S]*concurrent same-key insertion/i);
+  assert.match(sql, /select \* into v_evidence[\s\S]*from os2_bus_v01\.transport_evidence[\s\S]*where message_id = v_message_id;/i);
+  assert.doesNotMatch(sql, /from os2_bus_v01\.transport_evidence[\s\S]*where message_id = v_message_id[\s\S]*for update/i);
+  assert.match(sql, /grant select, insert on table os2_bus_v01\.transport_evidence to service_role/i);
+  assert.doesNotMatch(sql, /grant[^;]*update[^;]*os2_bus_v01\.transport_evidence/i);
 });
 
 test("concurrent first message writers converge through ON CONFLICT then locked re-read", () => {
