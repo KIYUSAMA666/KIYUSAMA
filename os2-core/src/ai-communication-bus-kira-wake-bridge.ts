@@ -13,9 +13,18 @@ export interface KiraWakeBridgeRecord {
   targetAgentId: "KIRA";
   current: BusCurrentBinding;
   status: KiraWakeStatus;
+  wakeMessageId: string | null;
   deploymentRunId: string | null;
   sessionId: string | null;
   observedAt: string | null;
+}
+
+export interface KiraWakeDispatchEvidence {
+  messageId: string;
+  traceId: string;
+  targetAgentId: "KIRA";
+  wakeMessageId: string;
+  observedAt: string;
 }
 
 export type KiraWakeResult =
@@ -24,6 +33,7 @@ export type KiraWakeResult =
       messageId: string;
       traceId: string;
       targetAgentId: "KIRA";
+      wakeMessageId: string;
       deploymentRunId: string;
       sessionId: string;
       observedAt: string;
@@ -34,6 +44,7 @@ export type KiraWakeResult =
       messageId: string;
       traceId: string;
       targetAgentId: "KIRA";
+      wakeMessageId?: string | null;
       observedAt: string;
       authorityGranted?: boolean;
     }
@@ -42,6 +53,7 @@ export type KiraWakeResult =
       messageId: string;
       traceId: string;
       targetAgentId: "KIRA";
+      wakeMessageId?: string | null;
       observedAt: string;
       authorityGranted?: boolean;
     };
@@ -70,11 +82,18 @@ function validTimestamp(value: unknown): value is string {
   return validNonEmpty(value) && Number.isFinite(Date.parse(value));
 }
 
-function sameBinding(record: KiraWakeBridgeRecord, result: KiraWakeResult): boolean {
+function validUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function sameBusBinding(
+  record: KiraWakeBridgeRecord,
+  value: { messageId: string; traceId: string; targetAgentId: "KIRA" },
+): boolean {
   return (
-    result.messageId === record.messageId &&
-    result.traceId === record.traceId &&
-    result.targetAgentId === record.targetAgentId
+    value.messageId === record.messageId &&
+    value.traceId === record.traceId &&
+    value.targetAgentId === record.targetAgentId
   );
 }
 
@@ -98,6 +117,7 @@ export function prepareKiraWake(
     targetAgentId: "KIRA",
     current: structuredClone(delivery.message.current),
     status: "PENDING",
+    wakeMessageId: null,
     deploymentRunId: null,
     sessionId: null,
     observedAt: null,
@@ -118,11 +138,41 @@ export function prepareKiraWake(
   return { status: "HOLD", reason: "WAKE_CONFLICT" };
 }
 
+export function attachKiraWakeDispatchEvidence(
+  record: KiraWakeBridgeRecord,
+  evidence: KiraWakeDispatchEvidence,
+): KiraWakeDecision<KiraWakeBridgeRecord> {
+  if (!sameBusBinding(record, evidence)) {
+    return { status: "HOLD", reason: "WAKE_BINDING_MISMATCH" };
+  }
+  if (!validUuid(evidence.wakeMessageId) || !validTimestamp(evidence.observedAt)) {
+    return { status: "HOLD", reason: "INVALID_WAKE_EVIDENCE" };
+  }
+  if (record.status === "CONFIRMED" || record.status === "TERMINAL_FAILED") {
+    return { status: "HOLD", reason: "INVALID_WAKE_TRANSITION" };
+  }
+  if (record.wakeMessageId !== null) {
+    if (record.wakeMessageId === evidence.wakeMessageId) {
+      return { status: "IDEMPOTENT", value: structuredClone(record) };
+    }
+    return { status: "HOLD", reason: "WAKE_CONFLICT" };
+  }
+
+  return {
+    status: "ACCEPTED",
+    value: {
+      ...structuredClone(record),
+      wakeMessageId: evidence.wakeMessageId,
+      observedAt: evidence.observedAt,
+    },
+  };
+}
+
 export function applyKiraWakeResult(
   record: KiraWakeBridgeRecord,
   result: KiraWakeResult,
 ): KiraWakeDecision<KiraWakeBridgeRecord> {
-  if (!sameBinding(record, result)) {
+  if (!sameBusBinding(record, result)) {
     return { status: "HOLD", reason: "WAKE_BINDING_MISMATCH" };
   }
   if (!validTimestamp(result.observedAt)) {
@@ -131,10 +181,18 @@ export function applyKiraWakeResult(
   if (result.authorityGranted === true) {
     return { status: "HOLD", reason: "AUTHORITY_ESCALATION_FORBIDDEN" };
   }
+  if (
+    result.wakeMessageId != null &&
+    (!validUuid(result.wakeMessageId) ||
+      (record.wakeMessageId !== null && result.wakeMessageId !== record.wakeMessageId))
+  ) {
+    return { status: "HOLD", reason: "WAKE_BINDING_MISMATCH" };
+  }
 
   if (record.status === "CONFIRMED") {
     if (
       result.outcome === "CONSUMED" &&
+      result.wakeMessageId === record.wakeMessageId &&
       result.deploymentRunId === record.deploymentRunId &&
       result.sessionId === record.sessionId
     ) {
@@ -168,7 +226,12 @@ export function applyKiraWakeResult(
     };
   }
 
-  if (!validNonEmpty(result.deploymentRunId) || !validNonEmpty(result.sessionId)) {
+  if (
+    record.wakeMessageId === null ||
+    result.wakeMessageId !== record.wakeMessageId ||
+    !validNonEmpty(result.deploymentRunId) ||
+    !validNonEmpty(result.sessionId)
+  ) {
     return { status: "HOLD", reason: "INVALID_WAKE_EVIDENCE" };
   }
 
@@ -191,6 +254,7 @@ export function createKiraWakeReply(
 ): KiraWakeDecision<BusMessage> {
   if (
     wake.status !== "CONFIRMED" ||
+    wake.wakeMessageId === null ||
     wake.messageId !== parent.messageId ||
     wake.traceId !== parent.traceId ||
     wake.current.stateId !== parent.current.stateId ||
