@@ -1,6 +1,22 @@
 -- KIYUSAMA OS 2.0
 -- AI COMMUNICATION BUS atomic message + transport persistence v0.1
 -- Repository-only migration candidate. Do not apply to production without explicit approval.
+--
+-- DESIGN NOTE — intentional direct DELIVERED creation path:
+-- The existing os2_bus_store_record entry point starts a brand-new durable BUS
+-- message at PENDING because it persists before transport outcome is known.
+-- This RPC is a different boundary: it is called only after the provider has
+-- returned explicit DELIVERED evidence. Persisting a synthetic PENDING row first
+-- would split the message and its transport evidence across separate commits and
+-- could leave a durable PENDING row after transport already succeeded. Therefore
+-- this RPC intentionally creates the new message as DELIVERED, but only in the
+-- same PostgreSQL transaction that validates and stores exact transport evidence.
+-- The direct DELIVERED path MUST remain coupled to all message/trace/target and
+-- provider-delivery bindings below; it must never become a generic alternate BUS
+-- writer or a source of execution authority.
+--
+-- MIGRATION ORDER: os2_bus_v01.messages must already exist. This candidate is an
+-- extension of the durable BUS backend, not a standalone first migration.
 
 create schema if not exists os2_bus_v01;
 revoke all on schema os2_bus_v01 from public, anon, authenticated;
@@ -50,6 +66,7 @@ declare
   v_observed_at timestamptz;
   v_existing os2_bus_v01.messages%rowtype;
   v_evidence os2_bus_v01.transport_evidence%rowtype;
+  v_inserted_evidence integer := 0;
 begin
   if jsonb_typeof(p_message) <> 'object'
      or jsonb_typeof(p_delivery) <> 'object'
@@ -93,27 +110,16 @@ begin
     return jsonb_build_object('status','BINDING_MISMATCH');
   end if;
 
+  -- First try to lock an existing durable identity. If no row exists, create the
+  -- exact delivered identity with ON CONFLICT DO NOTHING, then re-read under a
+  -- row lock. Concurrent first writers therefore converge on one durable row
+  -- instead of turning the loser into a primary-key BACKEND_FAILURE.
   select * into v_existing
   from os2_bus_v01.messages
   where message_id = v_message_id
   for update;
 
-  if found then
-    if v_existing.trace_id <> v_trace_id
-       or v_existing.kind <> v_kind
-       or v_existing.source_agent_id <> v_source
-       or v_existing.target_agent_id <> v_target
-       or v_existing.parent_message_id is distinct from v_parent
-       or v_existing.current_state_id <> v_state_id
-       or v_existing.current_state_revision <> v_state_revision
-       or v_existing.created_at <> v_created_at
-       or v_existing.payload <> v_payload
-       or v_existing.status <> 'DELIVERED'
-       or v_existing.delivered_to_agent_id <> v_target
-       or v_existing.acknowledged_by_agent_id is not null then
-      return jsonb_build_object('status','BINDING_MISMATCH');
-    end if;
-  else
+  if not found then
     insert into os2_bus_v01.messages(
       message_id,trace_id,kind,source_agent_id,target_agent_id,parent_message_id,
       current_state_id,current_state_revision,created_at,payload,status,
@@ -122,39 +128,63 @@ begin
       v_message_id,v_trace_id,v_kind,v_source,v_target,v_parent,
       v_state_id,v_state_revision,v_created_at,v_payload,'DELIVERED',
       v_target,null,1,v_observed_at,null
-    );
+    ) on conflict (message_id) do nothing;
+
+    select * into v_existing
+    from os2_bus_v01.messages
+    where message_id = v_message_id
+    for update;
+
+    if not found then
+      return jsonb_build_object('status','BACKEND_FAILURE');
+    end if;
   end if;
+
+  if v_existing.trace_id <> v_trace_id
+     or v_existing.kind <> v_kind
+     or v_existing.source_agent_id <> v_source
+     or v_existing.target_agent_id <> v_target
+     or v_existing.parent_message_id is distinct from v_parent
+     or v_existing.current_state_id <> v_state_id
+     or v_existing.current_state_revision <> v_state_revision
+     or v_existing.created_at <> v_created_at
+     or v_existing.payload <> v_payload
+     or v_existing.status <> 'DELIVERED'
+     or v_existing.delivered_to_agent_id <> v_target
+     or v_existing.acknowledged_by_agent_id is not null then
+    return jsonb_build_object('status','BINDING_MISMATCH');
+  end if;
+
+  -- Apply the same concurrency rule to transport evidence. The row insert and
+  -- the BUS message insert remain in this one transaction. A conflicting first
+  -- writer is re-read and must match every immutable binding exactly.
+  insert into os2_bus_v01.transport_evidence(
+    message_id,trace_id,target_agent_id,provider,provider_delivery_id,observed_at,status
+  ) values (
+    v_message_id,v_trace_id,v_target,v_provider,v_provider_delivery_id,v_observed_at,'DELIVERED'
+  ) on conflict (message_id) do nothing;
+  get diagnostics v_inserted_evidence = row_count;
 
   select * into v_evidence
   from os2_bus_v01.transport_evidence
   where message_id = v_message_id
   for update;
 
-  if found then
-    if v_evidence.trace_id <> v_trace_id
-       or v_evidence.target_agent_id <> v_target
-       or v_evidence.provider <> v_provider
-       or v_evidence.provider_delivery_id <> v_provider_delivery_id
-       or v_evidence.observed_at <> v_observed_at
-       or v_evidence.status <> 'DELIVERED' then
-      return jsonb_build_object('status','BINDING_MISMATCH');
-    end if;
-    return jsonb_build_object(
-      'status','IDEMPOTENT',
-      'storedMessageId',v_message_id,
-      'storedTraceId',v_trace_id,
-      'storedProviderDeliveryId',v_provider_delivery_id
-    );
+  if not found then
+    return jsonb_build_object('status','BACKEND_FAILURE');
   end if;
 
-  insert into os2_bus_v01.transport_evidence(
-    message_id,trace_id,target_agent_id,provider,provider_delivery_id,observed_at,status
-  ) values (
-    v_message_id,v_trace_id,v_target,v_provider,v_provider_delivery_id,v_observed_at,'DELIVERED'
-  );
+  if v_evidence.trace_id <> v_trace_id
+     or v_evidence.target_agent_id <> v_target
+     or v_evidence.provider <> v_provider
+     or v_evidence.provider_delivery_id <> v_provider_delivery_id
+     or v_evidence.observed_at <> v_observed_at
+     or v_evidence.status <> 'DELIVERED' then
+    return jsonb_build_object('status','BINDING_MISMATCH');
+  end if;
 
   return jsonb_build_object(
-    'status','STORED',
+    'status',case when v_inserted_evidence = 1 then 'STORED' else 'IDEMPOTENT' end,
     'storedMessageId',v_message_id,
     'storedTraceId',v_trace_id,
     'storedProviderDeliveryId',v_provider_delivery_id
