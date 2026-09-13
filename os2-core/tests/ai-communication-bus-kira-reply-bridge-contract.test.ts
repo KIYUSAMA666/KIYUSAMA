@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const source = readFileSync(resolve(here, "../src/ai-communication-bus-kira-reply-bridge.ts"), "utf8");
+const source = readFileSync(
+  resolve(process.cwd(), "src/ai-communication-bus-kira-reply-bridge.ts"),
+  "utf8",
+);
 
 test("bridge reuses createBusReply and PR117 round-trip verifier", () => {
   assert.match(source, /createBusReply\(input\.request, reply\)/);
