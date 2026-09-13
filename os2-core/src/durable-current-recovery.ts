@@ -1,4 +1,5 @@
-import { assertSnapshotInvariant, type CurrentStateSnapshot } from "./current-state.js";
+import { type CurrentStateSnapshot } from "./current-state.js";
+import { parseRuntimeCurrentStateSnapshot } from "./common-memory-current-resolution.js";
 
 export interface DurableCurrentRecord {
   stateId: string;
@@ -55,12 +56,8 @@ export function recoverDurableCurrent(
     return { status: "HOLD", reason: "MALFORMED_CURRENT" };
   }
 
-  const candidate = current as unknown as CurrentStateSnapshot;
-  let snapshot: CurrentStateSnapshot;
-  try {
-    assertSnapshotInvariant(candidate);
-    snapshot = candidate;
-  } catch {
+  const snapshot = parseRuntimeCurrentStateSnapshot(current);
+  if (snapshot === null) {
     return { status: "HOLD", reason: "MALFORMED_CURRENT" };
   }
 
