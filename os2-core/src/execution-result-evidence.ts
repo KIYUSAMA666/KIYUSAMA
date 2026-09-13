@@ -32,6 +32,7 @@ export type ExecutionResultDecision =
         | "RESULT_CONFLICT"
         | "RESULT_UNKNOWN"
         | "SELF_VERIFICATION_FORBIDDEN"
+        | "EXECUTOR_AUTHORITY_MISMATCH"
         | "RESULT_EVIDENCE_MISSING"
         | "RESULT_EVIDENCE_UNVERIFIED"
         | "RESULT_EVIDENCE_BINDING_MISMATCH"
@@ -114,6 +115,15 @@ export function evaluateExecutionResultEvidence(
     evidence.sourceStateRevision !== snapshot.identity.stateRevision
   ) {
     return { status: "HOLD", reason: "STATE_MISMATCH" };
+  }
+
+  if (
+    !handoff.requiredRole.trim() ||
+    !handoff.executorAuthorityId.trim() ||
+    evidence.executorId !== handoff.executorAuthorityId ||
+    snapshot.activeRolesAndAuthority[handoff.requiredRole] !== handoff.executorAuthorityId
+  ) {
+    return { status: "HOLD", reason: "EXECUTOR_AUTHORITY_MISMATCH" };
   }
 
   if (evidence.executorId === evidence.verifierId) {
