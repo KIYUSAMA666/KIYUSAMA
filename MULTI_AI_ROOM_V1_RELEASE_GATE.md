@@ -133,6 +133,44 @@ COMMON MEMORY closes when all of the following are independently evidenced again
 
 No additional COMMON MEMORY attack condition may be added to v1 merely because it is interesting. A new condition must first satisfy the V1 BLOCKER RULE.
 
+## ROLE / AUTHORITY — current EXIT CONTRACT
+
+ROLE / AUTHORITY closes when all of the following are independently evidenced against the current main line:
+
+### Functional path
+
+- execution authorization is derived from CURRENT `activeRolesAndAuthority`, not from a caller-supplied pre-authorized decision;
+- the required role and actor authority are bound to the current action/state/revision before execution;
+- the authorized role/actor is carried into Execution Handoff as `requiredRole` + `executorAuthorityId`;
+- Execution Result `executorId` is bound to that exact handoff authority;
+- Handoff and Result boundaries re-check CURRENT role authority so authority drift cannot silently authorize execution;
+- the real end-to-end trust pipeline uses the authority-bound pre-execution gate before Handoff, Result, WRITE BACK, and atomic commit;
+- KIYUSAMA remains the final human authority and no role/executor path may override protected authority/control state.
+
+### Predefined attack set
+
+- attacker self-promotion into an active role -> HOLD;
+- role substitution -> HOLD;
+- inactive or missing required role -> HOLD;
+- missing/malformed authority requirement or authority claim -> HOLD without throwing;
+- stale/foreign action, state, or revision authority -> HOLD;
+- correct authority cannot bypass ordinary evidence/capability/provenance gate failure;
+- Handoff executor substitution -> HOLD;
+- Handoff role substitution -> HOLD;
+- CURRENT authority drift before/during Handoff -> HOLD;
+- Result executor substitution from the authorized actor -> HOLD;
+- Result/Handoff authority mismatch -> HOLD;
+- CURRENT authority drift at Result validation -> HOLD;
+- self-verification remains forbidden;
+- forged provenance, replay, or unauthorized WRITE BACK mutation cannot regain execution authority;
+- legacy E2E execution path may not bypass the authority-bound gate.
+
+### Closure sequence
+
+`EXIT attack set PASS -> KIRA independent PASS -> 3号 Final Hunt x1 -> no unresolved V1 BLOCKER -> ROLE/AUTHORITY CLOSED -> AI COMMUNICATION BUS starts`
+
+No additional ROLE / AUTHORITY attack condition may be added to v1 merely because it is interesting. A new condition must first satisfy the V1 BLOCKER RULE.
+
 ## Final MULTI-AI ROOM v1 release condition
 
 v1 may be released when:
