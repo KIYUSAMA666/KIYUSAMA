@@ -118,6 +118,8 @@ export function evaluateExecutionResultEvidence(
   }
 
   if (
+    typeof handoff.requiredRole !== "string" ||
+    typeof handoff.executorAuthorityId !== "string" ||
     !handoff.requiredRole.trim() ||
     !handoff.executorAuthorityId.trim() ||
     evidence.executorId !== handoff.executorAuthorityId ||
