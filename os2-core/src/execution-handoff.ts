@@ -1,7 +1,7 @@
 import type { ActionEvidenceRequirement, RequiredEvidenceRefBinding } from "./action-evidence-requirement.js";
+import type { AuthorityBoundPreExecutionGateDecision } from "./authority-bound-pre-execution-gate.js";
 import type { CapabilitySlot } from "./capability-slot.js";
 import type { CurrentStateSnapshot } from "./current-state.js";
-import type { PreExecutionGateDecision } from "./pre-execution-gate.js";
 
 export const MAX_EXECUTION_HANDOFF_TTL_MS = 60 * 60 * 1000;
 
@@ -9,7 +9,7 @@ export interface ExecutionHandoffInput {
   snapshot: CurrentStateSnapshot;
   actionEvidenceRequirement: ActionEvidenceRequirement;
   capabilitySlot: CapabilitySlot;
-  gateDecision: PreExecutionGateDecision;
+  gateDecision: AuthorityBoundPreExecutionGateDecision;
 }
 
 export interface ResultEvidencePolicy {
@@ -24,6 +24,8 @@ export interface ExecutionHandoffRequest {
   actionId: string;
   sourceStateId: string;
   sourceStateRevision: number;
+  requiredRole: string;
+  executorAuthorityId: string;
   capabilityId: string;
   implementationId: string;
   issuedAt: string;
@@ -35,6 +37,7 @@ export interface ExecutionHandoffRequest {
 export type ExecutionHandoffHoldReason =
   | "GATE_NOT_ALLOWED"
   | "GATE_DECISION_MISMATCH"
+  | "AUTHORITY_BINDING_MISMATCH"
   | "CAPABILITY_NOT_READY"
   | "HANDOFF_MISMATCH"
   | "STATE_CHANGED"
@@ -99,6 +102,24 @@ export function evaluateExecutionHandoff(
     input.gateDecision.stateRevision !== input.snapshot.identity.stateRevision
   ) {
     return { status: "HOLD", reason: "GATE_DECISION_MISMATCH" };
+  }
+
+  if (
+    typeof request.requiredRole !== "string" ||
+    typeof request.executorAuthorityId !== "string" ||
+    !request.requiredRole.trim() ||
+    !request.executorAuthorityId.trim()
+  ) {
+    return { status: "HOLD", reason: "AUTHORITY_BINDING_MISMATCH" };
+  }
+
+  const activeAuthorityId = input.snapshot.activeRolesAndAuthority[input.gateDecision.role];
+  if (
+    input.gateDecision.role !== request.requiredRole ||
+    input.gateDecision.actorAuthorityId !== request.executorAuthorityId ||
+    activeAuthorityId !== request.executorAuthorityId
+  ) {
+    return { status: "HOLD", reason: "AUTHORITY_BINDING_MISMATCH" };
   }
 
   const binding = input.capabilitySlot.binding;

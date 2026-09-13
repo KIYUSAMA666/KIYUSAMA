@@ -15,8 +15,7 @@ import {
  *
  * The caller cannot inject an AUTHORIZED decision. This boundary recomputes
  * role/authority from CURRENT and only then evaluates the existing
- * pre-execution gate. It is the strict entrypoint that the end-to-end pipeline
- * will be migrated to in the next pillar.
+ * pre-execution gate.
  */
 export interface AuthorityBoundPreExecutionGateInput<T = unknown>
   extends PreExecutionGateInput<T> {
@@ -41,6 +40,17 @@ export type AuthorityBoundPreExecutionGateDecision =
 export function evaluateAuthorityBoundPreExecutionGate<T = unknown>(
   input: AuthorityBoundPreExecutionGateInput<T>,
 ): AuthorityBoundPreExecutionGateDecision {
+  if (
+    input === null ||
+    typeof input !== "object" ||
+    input.authorityRequirement === null ||
+    typeof input.authorityRequirement !== "object" ||
+    input.authorityClaim === null ||
+    typeof input.authorityClaim !== "object"
+  ) {
+    return { status: "HOLD", reason: "INVALID_AUTHORITY_BINDING_INPUT" };
+  }
+
   const authorityDecision = evaluateActionRoleAuthority(
     input.snapshot as CurrentStateSnapshot,
     input.authorityRequirement,

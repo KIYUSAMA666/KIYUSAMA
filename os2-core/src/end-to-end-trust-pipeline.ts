@@ -1,4 +1,11 @@
 import { evaluateActionEvidenceRequirement, type ActionEvidenceRequirement } from "./action-evidence-requirement.js";
+import {
+  type ActionRoleAuthorityClaim,
+  type ActionRoleAuthorityRequirement,
+} from "./action-role-authority.js";
+import {
+  evaluateAuthorityBoundPreExecutionGate,
+} from "./authority-bound-pre-execution-gate.js";
 import type { CapabilitySlot } from "./capability-slot.js";
 import type { CurrentStateSnapshot } from "./current-state.js";
 import {
@@ -10,7 +17,6 @@ import {
   type ExecutionResultEvidence,
 } from "./execution-result-evidence.js";
 import { selectExecutionCandidate, type MemoryRecord } from "./memory-selection.js";
-import { evaluatePreExecutionGate } from "./pre-execution-gate.js";
 import {
   evaluateProvenanceVerification,
   type ProvenanceVerificationInput,
@@ -23,18 +29,17 @@ import {
 } from "./write-back.js";
 
 /**
- * END-TO-END TRUST PIPELINE v0.2
+ * END-TO-END TRUST PIPELINE v0.3
  *
- * Rebuilt on top of PR #72's receipt-backed WRITE BACK contract.
- * The pipeline never accepts caller-supplied Handoff/Result decisions or receipts.
- * It issues WeakSet-backed receipts internally only after the locked evaluators pass,
- * then supplies those exact receipts to WRITE BACK.
+ * The executable path is authority-bound. The pipeline does not accept a
+ * caller-supplied AUTHORIZED decision; it recomputes role/authority from
+ * CURRENT before any Handoff receipt can be issued.
  *
  * Order:
  * CURRENT memory selection
  * -> pre-execution external provenance
  * -> action evidence
- * -> pre-execution gate
+ * -> authority-bound pre-execution gate
  * -> issue verified Handoff receipt
  * -> issue accepted Result receipt
  * -> post-execution external provenance
@@ -60,6 +65,8 @@ export interface EndToEndTrustPipelineInput<T = unknown> {
   snapshot: CurrentStateSnapshot;
   memoryRecord: MemoryRecord<T>;
   actionEvidenceRequirement: ActionEvidenceRequirement;
+  actionRoleAuthorityRequirement: ActionRoleAuthorityRequirement;
+  actionRoleAuthorityClaim: ActionRoleAuthorityClaim;
   requiredCapabilityId: string;
   capabilitySlot: CapabilitySlot;
   handoff: ExecutionHandoffRequest;
@@ -96,11 +103,13 @@ export function evaluateEndToEndTrustPipeline<T = unknown>(
     return { status: "HOLD", stage: "ACTION_EVIDENCE", reason: actionEvidenceDecision.reason };
   }
 
-  const gateDecision = evaluatePreExecutionGate({
+  const gateDecision = evaluateAuthorityBoundPreExecutionGate({
     actionId: input.handoff.actionId,
     snapshot: input.snapshot,
     memoryDecision,
     actionEvidenceDecision,
+    authorityRequirement: input.actionRoleAuthorityRequirement,
+    authorityClaim: input.actionRoleAuthorityClaim,
     requiredCapabilityId: input.requiredCapabilityId,
     capabilitySlot: input.capabilitySlot,
   });
