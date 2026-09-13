@@ -33,6 +33,7 @@ function snapshot() {
     mainLineTask: { taskId: "ML-1", description: "integration" },
     nextActionSingle: { actionId: "NA-1", description: "execute integration action" },
     activeRolesAndAuthority: {
+      EXECUTION_AUTHORITY: "EXECUTOR-1",
       EVIDENCE_AUTHORITY: "AUTH-EVIDENCE-1",
       LANE_AUTHORITY: "AUTH-LANE-1",
       IDENTITY_AUTHORITY: "AUTH-IDENTITY-1",
@@ -149,6 +150,15 @@ function fixture() {
       requiredRefs: [{ id: "REF-1", expectedVersion: "v7", path: "evidence/ref-1.json" }],
       requireIndependentLane: true,
     },
+    actionRoleAuthorityRequirement: {
+      actionId: "NA-1",
+      requiredRole: "EXECUTION_AUTHORITY",
+    },
+    actionRoleAuthorityClaim: {
+      actionId: "NA-1",
+      claimedRole: "EXECUTION_AUTHORITY",
+      actorAuthorityId: "EXECUTOR-1",
+    },
     requiredCapabilityId: "CAP-1",
     capabilitySlot: {
       slotId: "SLOT-1", capabilityId: "CAP-1", status: "BOUND",
@@ -189,7 +199,7 @@ function resignRevocation(f) {
   f.revocation.signatureBase64 = sig(f.rootPair.privateKey, canonicalRevocationPayload(f.revocation));
 }
 
-test("1 normal receipt-backed CURRENT-to-WRITE-BACK path reaches atomic commit", () => {
+test("1 normal authority-bound CURRENT-to-WRITE-BACK path reaches atomic commit", () => {
   const f = fixture();
   const d = evaluateEndToEndTrustPipeline(f.input);
   assert.equal(d.status, "READY_TO_COMMIT");
@@ -298,5 +308,45 @@ test("13 WRITE BACK source substitution fails after all trust checks", () => {
   f.input.writeBackRequest.source.sourceResultId = "RESULT-ATTACK";
   assert.deepEqual(evaluateEndToEndTrustPipeline(f.input), {
     status: "HOLD", stage: "WRITE_BACK", reason: "SOURCE_BINDING_MISMATCH",
+  });
+});
+
+test("14 attacker cannot self-promote into E2E execution authority", () => {
+  const f = fixture();
+  f.input.actionRoleAuthorityClaim.actorAuthorityId = "ATTACKER";
+  assert.deepEqual(evaluateEndToEndTrustPipeline(f.input), {
+    status: "HOLD", stage: "PRE_EXECUTION_GATE", reason: "AUTHORITY_MISMATCH",
+  });
+});
+
+test("15 role substitution cannot enter E2E execution", () => {
+  const f = fixture();
+  f.input.actionRoleAuthorityClaim.claimedRole = "EVIDENCE_AUTHORITY";
+  assert.deepEqual(evaluateEndToEndTrustPipeline(f.input), {
+    status: "HOLD", stage: "PRE_EXECUTION_GATE", reason: "ROLE_MISMATCH",
+  });
+});
+
+test("16 inactive required role cannot enter E2E execution", () => {
+  const f = fixture();
+  delete f.input.snapshot.activeRolesAndAuthority.EXECUTION_AUTHORITY;
+  assert.deepEqual(evaluateEndToEndTrustPipeline(f.input), {
+    status: "HOLD", stage: "PRE_EXECUTION_GATE", reason: "ROLE_NOT_ACTIVE",
+  });
+});
+
+test("17 missing authority claim fails closed instead of throwing", () => {
+  const f = fixture();
+  delete f.input.actionRoleAuthorityClaim;
+  assert.deepEqual(evaluateEndToEndTrustPipeline(f.input), {
+    status: "HOLD", stage: "PRE_EXECUTION_GATE", reason: "INVALID_AUTHORITY_BINDING_INPUT",
+  });
+});
+
+test("18 CURRENT authority replacement is recomputed and rejected", () => {
+  const f = fixture();
+  f.input.snapshot.activeRolesAndAuthority.EXECUTION_AUTHORITY = "EXECUTOR-2";
+  assert.deepEqual(evaluateEndToEndTrustPipeline(f.input), {
+    status: "HOLD", stage: "PRE_EXECUTION_GATE", reason: "AUTHORITY_MISMATCH",
   });
 });
