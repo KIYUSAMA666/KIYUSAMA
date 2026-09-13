@@ -89,7 +89,7 @@ function currentSnapshot(revision=7){return{identity:{stateId:"room-v1",schemaVe
 function wakeFence() {
   const snapshot=currentSnapshot();
   const handoffInput={snapshot,actionEvidenceRequirement:{actionId:"NA-WAKE",requiredRefs:[ref()],requireIndependentLane:false},capabilitySlot:{slotId:"S-WAKE",capabilityId:"CAP-WAKE",status:"BOUND",binding:{capabilityId:"CAP-WAKE",implementationId:"IMPL-WAKE",source:"NATIVE",version:"1",verified:true}},gateDecision:{status:"ALLOW",actionId:"NA-WAKE",stateId:"room-v1",stateRevision:7,role:"EXECUTION_AUTHORITY",actorAuthorityId:"EXECUTOR-1"}};
-  const handoffRequest={handoffId:"HO-WAKE",traceId:"TRACE-WAKE",actionId:"NA-WAKE",sourceStateId:"room-v1",sourceStateRevision:7,requiredRole:"EXECUTION_AUTHORITY",executorAuthorityId:"EXECUTOR-1",capabilityId:"CAP-WAKE",implementationId:"IMPL-WAKE",issuedAt:"2026-09-13T11:59:00Z",expiresAt:"2026-09-13T13:00:00Z",evidenceRefs:[ref()],resultEvidencePolicy:{requiredRefs:[ref("REF-WAKE-RESULT","1","evidence/REF-WAKE-RESULT")],verifierId:"KIRA-1",evidenceSource:"KIRA-1"}};
+  const handoffRequest={handoffId:"HO-WAKE",traceId:"TRACE-WAKE",actionId:"NA-WAKE",sourceStateId:"room-v1",sourceStateRevision:7,requiredRole:"EXECUTION_AUTHORITY",executorAuthorityId:"EXECUTOR-1",capabilityId:"CAP-WAKE",implementationId:"IMPL-WAKE",issuedAt:"2026-09-13T11:59:00Z",expiresAt:"2026-09-13T12:30:00Z",evidenceRefs:[ref()],resultEvidencePolicy:{requiredRefs:[ref("REF-WAKE-RESULT","1","evidence/REF-WAKE-RESULT")],verifierId:"KIRA-1",evidenceSource:"KIRA-1"}};
   const handoff=issueVerifiedExecutionHandoffReceipt(handoffInput,handoffRequest,"2026-09-13T12:00:00Z");
   assert.equal(handoff.status,"READY");
   if(handoff.status!=="READY") assert.fail("handoff not ready");
