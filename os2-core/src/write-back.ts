@@ -1,4 +1,5 @@
-import { assertSnapshotInvariant, type CurrentStateSnapshot } from "./current-state.js";
+import { type CurrentStateSnapshot } from "./current-state.js";
+import { parseRuntimeCurrentStateSnapshot } from "./common-memory-current-resolution.js";
 import {
   isVerifiedExecutionHandoffReceipt,
   type ExecutionHandoffRequest,
@@ -18,6 +19,7 @@ import {
  * 4. Carry an expected-current compare target for storage-layer CAS.
  * 5. Require in-process receipts proving Handoff READY and Result ACCEPTED were actually evaluated.
  * 6. Keep authority/control fields immutable in WRITE BACK v0.1.
+ * 7. Canonicalize CURRENT through the COMMON MEMORY runtime parser before persistence.
  */
 
 export interface WriteBackParentBinding {
@@ -66,6 +68,7 @@ export type WriteBackDecision =
         | "INVALID_WRITE_BACK"
         | "HANDOFF_NOT_READY"
         | "RESULT_NOT_ACCEPTED"
+        | "CURRENT_INVARIANT_FAILED"
         | "PARENT_MISMATCH"
         | "SOURCE_BINDING_MISMATCH"
         | "REVISION_CONFLICT"
@@ -92,6 +95,45 @@ export interface WriteBackEvaluationInput {
   consumedHandoffIds: ReadonlySet<string>;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function nonEmpty(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function parseWriteBackProvenance(value: unknown): WriteBackProvenance | null {
+  if (!isRecord(value) || !isRecord(value.parent) || !isRecord(value.source)) return null;
+  if (
+    !nonEmpty(value.parent.parentStateId) ||
+    !Number.isInteger(value.parent.parentRevision) ||
+    (value.parent.parentRevision as number) < 1 ||
+    !nonEmpty(value.source.sourceResultId) ||
+    !nonEmpty(value.source.sourceHandoffId)
+  ) return null;
+
+  return {
+    parent: {
+      parentStateId: value.parent.parentStateId,
+      parentRevision: value.parent.parentRevision as number,
+    },
+    source: {
+      sourceResultId: value.source.sourceResultId,
+      sourceHandoffId: value.source.sourceHandoffId,
+    },
+  };
+}
+
+function canonicalizeWriteBackCandidate(
+  candidate: WriteBackCurrentStateCandidate,
+): WriteBackCurrentStateCandidate | null {
+  const snapshot = parseRuntimeCurrentStateSnapshot(candidate);
+  const writeBack = parseWriteBackProvenance(candidate?.writeBack);
+  if (snapshot === null || writeBack === null) return null;
+  return { ...snapshot, writeBack };
+}
+
 function sameJson(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -116,7 +158,7 @@ export function evaluateWriteBack(
   input: WriteBackEvaluationInput,
   request: WriteBackRequest,
 ): WriteBackDecision {
-  const { current, handoff, result } = input;
+  const { handoff, result } = input;
 
   if (!isVerifiedExecutionHandoffReceipt(input.handoffReceipt, handoff)) {
     return { status: "HOLD", reason: "HANDOFF_NOT_READY" };
@@ -138,14 +180,18 @@ export function evaluateWriteBack(
     return { status: "HOLD", reason: "INVALID_WRITE_BACK" };
   }
 
-  try {
-    assertSnapshotInvariant(request.candidate);
-  } catch {
+  const current = parseRuntimeCurrentStateSnapshot(input.current);
+  if (current === null) {
+    return { status: "HOLD", reason: "CURRENT_INVARIANT_FAILED" };
+  }
+
+  const candidate = canonicalizeWriteBackCandidate(request.candidate);
+  if (candidate === null) {
     return { status: "HOLD", reason: "CANDIDATE_INVARIANT_FAILED" };
   }
 
   const parentEffectiveAtMs = Date.parse(current.identity.effectiveAt);
-  const candidateEffectiveAtMs = Date.parse(request.candidate.identity.effectiveAt);
+  const candidateEffectiveAtMs = Date.parse(candidate.identity.effectiveAt);
   if (
     !Number.isFinite(parentEffectiveAtMs) ||
     !Number.isFinite(candidateEffectiveAtMs) ||
@@ -154,15 +200,15 @@ export function evaluateWriteBack(
     return { status: "HOLD", reason: "CANDIDATE_INVARIANT_FAILED" };
   }
 
-  if (!preservesWriteBackImmutableState(current, request.candidate)) {
+  if (!preservesWriteBackImmutableState(current, candidate)) {
     return { status: "HOLD", reason: "UNAUTHORIZED_STATE_MUTATION" };
   }
 
   if (
     request.parent.parentStateId !== current.identity.stateId ||
     request.parent.parentRevision !== current.identity.stateRevision ||
-    request.candidate.writeBack.parent.parentStateId !== request.parent.parentStateId ||
-    request.candidate.writeBack.parent.parentRevision !== request.parent.parentRevision
+    candidate.writeBack.parent.parentStateId !== request.parent.parentStateId ||
+    candidate.writeBack.parent.parentRevision !== request.parent.parentRevision
   ) {
     return { status: "HOLD", reason: "PARENT_MISMATCH" };
   }
@@ -175,8 +221,8 @@ export function evaluateWriteBack(
     result.sourceStateRevision !== current.identity.stateRevision ||
     handoff.sourceStateId !== current.identity.stateId ||
     handoff.sourceStateRevision !== current.identity.stateRevision ||
-    request.candidate.writeBack.source.sourceResultId !== request.source.sourceResultId ||
-    request.candidate.writeBack.source.sourceHandoffId !== request.source.sourceHandoffId ||
+    candidate.writeBack.source.sourceResultId !== request.source.sourceResultId ||
+    candidate.writeBack.source.sourceHandoffId !== request.source.sourceHandoffId ||
     request.consumption.resultConsumptionKey !== result.resultId ||
     request.consumption.handoffConsumptionKey !== handoff.handoffId
   ) {
@@ -199,10 +245,10 @@ export function evaluateWriteBack(
   }
 
   if (
-    request.candidate.identity.stateId !== request.parent.parentStateId ||
-    request.candidate.identity.stateRevision !== request.parent.parentRevision + 1 ||
-    request.candidate.identity.lineageId !== current.identity.lineageId ||
-    request.candidate.identity.scope !== current.identity.scope
+    candidate.identity.stateId !== request.parent.parentStateId ||
+    candidate.identity.stateRevision !== request.parent.parentRevision + 1 ||
+    candidate.identity.lineageId !== current.identity.lineageId ||
+    candidate.identity.scope !== current.identity.scope
   ) {
     return { status: "HOLD", reason: "REVISION_CONFLICT" };
   }
@@ -211,10 +257,14 @@ export function evaluateWriteBack(
 }
 
 export function toWriteBackAtomicCommit(request: WriteBackRequest): WriteBackAtomicCommit {
+  const nextCurrent = canonicalizeWriteBackCandidate(request.candidate);
+  if (nextCurrent === null) {
+    throw new Error("write-back candidate must be canonicalizable before atomic commit");
+  }
   return {
     expectedCurrent: request.cas,
     consumeResultId: request.source.sourceResultId,
     consumeHandoffId: request.source.sourceHandoffId,
-    nextCurrent: request.candidate,
+    nextCurrent,
   };
 }

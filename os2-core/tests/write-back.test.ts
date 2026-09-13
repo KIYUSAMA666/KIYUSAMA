@@ -251,3 +251,39 @@ test("14 atomic commit projection preserves CAS, consumption IDs, and next CURRE
     nextCurrent: r.candidate,
   });
 });
+
+test("15 malformed nested candidate CURRENT is rejected before persistence", () => {
+  const r = request();
+  r.candidate.activeGuards[0].refConfirmed = "FORGED";
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "CANDIDATE_INVARIANT_FAILED" });
+});
+
+test("16 malformed live CURRENT is rejected before write-back evaluation", () => {
+  const i = input();
+  i.current.confirmedRefIndex[0].expectedVersion = 99;
+  assert.deepEqual(evaluateWriteBack(i, request()), { status: "HOLD", reason: "CURRENT_INVARIANT_FAILED" });
+});
+
+test("17 unknown candidate execution-authority fields are stripped from atomic commit", () => {
+  const r = request();
+  r.candidate.injectedExecutionAuthority = { canCommit: true, actor: "ATTACKER" };
+  assert.equal(evaluateWriteBack(input(), r).status, "READY");
+  const atomic = toWriteBackAtomicCommit(r);
+  assert.equal("injectedExecutionAuthority" in atomic.nextCurrent, false);
+});
+
+test("18 unknown writeBack provenance fields are stripped from atomic commit", () => {
+  const r = request();
+  r.candidate.writeBack.injectedLease = "ATTACKER";
+  r.candidate.writeBack.parent.injectedParentAuthority = true;
+  const atomic = toWriteBackAtomicCommit(r);
+  assert.equal("injectedLease" in atomic.nextCurrent.writeBack, false);
+  assert.equal("injectedParentAuthority" in atomic.nextCurrent.writeBack.parent, false);
+});
+
+test("19 malformed writeBack provenance fails closed", () => {
+  const r = request();
+  r.candidate.writeBack.parent.parentRevision = -1;
+  assert.deepEqual(evaluateWriteBack(input(), r), { status: "HOLD", reason: "CANDIDATE_INVARIANT_FAILED" });
+  assert.throws(() => toWriteBackAtomicCommit(r));
+});
