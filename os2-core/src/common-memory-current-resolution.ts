@@ -93,7 +93,7 @@ function parseConfirmedRefIndex(value: unknown): CurrentStateSnapshot["confirmed
   return refs;
 }
 
-function parseRuntimeCurrentStateSnapshot(value: unknown): CurrentStateSnapshot | null {
+export function parseRuntimeCurrentStateSnapshot(value: unknown): CurrentStateSnapshot | null {
   if (!isRecord(value)) return null;
   const identity = value.identity;
   const humanDecisionFinal = value.humanDecisionFinal;
