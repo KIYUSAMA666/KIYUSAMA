@@ -16,6 +16,11 @@ import {
 } from "./ai-communication-bus-live-kira-adapter.js";
 import type { TransportEvidence } from "./ai-communication-bus-transport-evidence.js";
 import type { KiraWakeBridgeRecord } from "./ai-communication-bus-kira-wake-bridge.js";
+import {
+  isVerifiedSideEffectPermit,
+  type SideEffectIntent,
+  type VerifiedSideEffectPermit,
+} from "./side-effect-fence.js";
 
 export interface LiveBusPersistenceReceipt {
   ok: boolean;
@@ -57,6 +62,7 @@ export type LiveBusInvocationDecision =
         | "PERSISTENCE"
         | "WAKE_RECOVERY"
         | "WAKE_ENQUEUE"
+        | "SIDE_EFFECT_FENCE"
         | "WAKE_EXECUTION";
       reason: string;
     };
@@ -110,6 +116,11 @@ export async function runLiveBusInvocation(input: {
   slackObservedAt: string;
   wakeEnqueueObservedAt: string;
   wakeExecutionObservedAt: string;
+  wakeExecutionFence: {
+    permit: VerifiedSideEffectPermit;
+    intent: SideEffectIntent;
+    dispatchNow: string;
+  };
   ports: LiveBusInvocationPorts;
 }): Promise<LiveBusInvocationDecision> {
   const published = publishBusMessage(null, input.message);
@@ -187,6 +198,19 @@ export async function runLiveBusInvocation(input: {
 
   if (wakeBound.value.wakeMessageId === null) {
     return { status: "HOLD", stage: "WAKE_ENQUEUE", reason: "MISSING_WAKE_MESSAGE_ID" };
+  }
+
+  if (
+    !isVerifiedSideEffectPermit(
+      input.wakeExecutionFence.permit,
+      input.wakeExecutionFence.intent,
+      input.wakeExecutionFence.dispatchNow,
+    ) ||
+    input.wakeExecutionFence.intent.effectClass !== "EXTERNAL_MUTATION" ||
+    input.wakeExecutionFence.intent.target !== `managed-wake:${wakeBound.value.wakeMessageId}` ||
+    input.wakeExecutionFence.intent.operation !== "executeManagedWake"
+  ) {
+    return { status: "HOLD", stage: "SIDE_EFFECT_FENCE", reason: "WAKE_EXECUTION_PERMIT_INVALID" };
   }
 
   const executorReceipt = await input.ports.executeManagedWake(wakeBound.value.wakeMessageId);
