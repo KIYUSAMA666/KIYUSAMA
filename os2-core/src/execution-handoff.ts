@@ -104,10 +104,17 @@ export function evaluateExecutionHandoff(
     return { status: "HOLD", reason: "GATE_DECISION_MISMATCH" };
   }
 
+  if (
+    typeof request.requiredRole !== "string" ||
+    typeof request.executorAuthorityId !== "string" ||
+    !request.requiredRole.trim() ||
+    !request.executorAuthorityId.trim()
+  ) {
+    return { status: "HOLD", reason: "AUTHORITY_BINDING_MISMATCH" };
+  }
+
   const activeAuthorityId = input.snapshot.activeRolesAndAuthority[input.gateDecision.role];
   if (
-    !request.requiredRole.trim() ||
-    !request.executorAuthorityId.trim() ||
     input.gateDecision.role !== request.requiredRole ||
     input.gateDecision.actorAuthorityId !== request.executorAuthorityId ||
     activeAuthorityId !== request.executorAuthorityId
