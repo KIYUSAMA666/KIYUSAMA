@@ -115,6 +115,7 @@ function fixture() {
   const handoff = {
     handoffId: "HANDOFF-1", traceId: "TRACE-1", actionId: "NA-1",
     sourceStateId: "CS-MAIN", sourceStateRevision: 12,
+    requiredRole: "EXECUTION_AUTHORITY", executorAuthorityId: "EXECUTOR-1",
     capabilityId: "CAP-1", implementationId: "IMPL-1",
     issuedAt: "2026-09-11T08:20:00+09:00", expiresAt: "2026-09-11T08:50:00+09:00",
     evidenceRefs: [{ id: "REF-1", expectedVersion: "v7", path: "evidence/ref-1.json" }],
@@ -241,8 +242,11 @@ test("5 expired handoff cannot obtain WeakSet-backed receipt", () => {
   });
 });
 
-test("6 self-verified result cannot obtain accepted-result receipt", () => {
+test("6 self-verified authorized executor cannot obtain accepted-result receipt", () => {
   const f = fixture();
+  f.input.snapshot.activeRolesAndAuthority.EXECUTION_AUTHORITY = "KIRA-INDEPENDENT";
+  f.input.actionRoleAuthorityClaim.actorAuthorityId = "KIRA-INDEPENDENT";
+  f.input.handoff.executorAuthorityId = "KIRA-INDEPENDENT";
   f.input.result.executorId = "KIRA-INDEPENDENT";
   assert.deepEqual(evaluateEndToEndTrustPipeline(f.input), {
     status: "HOLD", stage: "EXECUTION_RESULT", reason: "SELF_VERIFICATION_FORBIDDEN",
@@ -343,7 +347,23 @@ test("17 missing authority claim fails closed instead of throwing", () => {
   });
 });
 
-test("18 CURRENT authority replacement is recomputed and rejected", () => {
+test("18 handoff cannot substitute a different executor than the authorized actor", () => {
+  const f = fixture();
+  f.input.handoff.executorAuthorityId = "ATTACKER";
+  assert.deepEqual(evaluateEndToEndTrustPipeline(f.input), {
+    status: "HOLD", stage: "EXECUTION_HANDOFF", reason: "AUTHORITY_BINDING_MISMATCH",
+  });
+});
+
+test("19 result cannot substitute a different executor than the handoff", () => {
+  const f = fixture();
+  f.input.result.executorId = "ATTACKER";
+  assert.deepEqual(evaluateEndToEndTrustPipeline(f.input), {
+    status: "HOLD", stage: "EXECUTION_RESULT", reason: "EXECUTOR_AUTHORITY_MISMATCH",
+  });
+});
+
+test("20 CURRENT authority replacement is recomputed before execution", () => {
   const f = fixture();
   f.input.snapshot.activeRolesAndAuthority.EXECUTION_AUTHORITY = "EXECUTOR-2";
   assert.deepEqual(evaluateEndToEndTrustPipeline(f.input), {
