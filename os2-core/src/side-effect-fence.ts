@@ -3,18 +3,28 @@ import {
   type ExecutionHandoffRequest,
   type VerifiedExecutionHandoffReceipt,
 } from "./execution-handoff.js";
+import {
+  assertSnapshotInvariant,
+  type CurrentStateSnapshot,
+} from "./current-state.js";
 
 /**
  * SIDE-EFFECT FENCE / EXECUTION CONTROL v0.1
  *
  * Converts an already-verified execution handoff into a narrowly-bound egress
- * permit. The permit is bound to CURRENT, worker identity, worker epoch,
- * generation, capability, target and operation. A caller cannot manufacture a
- * valid permit by shape alone; issuance is tracked in-process and can be
- * checked immediately before gateway dispatch.
+ * permit. The permit is bound to a freshly loaded CURRENT snapshot, worker
+ * identity, worker epoch, generation, capability, target and operation.
+ *
+ * IMPORTANT RUNTIME BOUNDARY:
+ * VerifiedSideEffectPermit is intentionally IN_PROCESS_ONLY. Authenticity is
+ * tracked with object identity in a WeakSet. Serialization, process restart,
+ * queue transfer, or another gateway worker invalidates the permit. A future
+ * cross-process design must use a separately authenticated durable/signed
+ * permit rather than weakening this check.
  */
 
 export const MAX_EGRESS_PERMIT_TTL_MS = 5 * 60 * 1000;
+export const SIDE_EFFECT_PERMIT_RUNTIME_SCOPE = "IN_PROCESS_ONLY" as const;
 
 export type SideEffectClass =
   | "EXTERNAL_MUTATION"
@@ -25,6 +35,10 @@ export interface WorkerExecutionBinding {
   workerId: string;
   workerEpoch: number;
   generation: number;
+}
+
+export interface CurrentStateProvider {
+  readCurrentState(): CurrentStateSnapshot;
 }
 
 export interface SideEffectIntent {
@@ -46,6 +60,7 @@ export interface SideEffectIntent {
 
 export type SideEffectFenceHoldReason =
   | "HANDOFF_NOT_VERIFIED"
+  | "CURRENT_PROVIDER_FAILURE"
   | "CURRENT_BINDING_MISMATCH"
   | "HANDOFF_BINDING_MISMATCH"
   | "WORKER_BINDING_INVALID"
@@ -57,6 +72,7 @@ export type SideEffectFenceHoldReason =
 
 export interface VerifiedSideEffectPermit {
   readonly status: "PERMIT";
+  readonly runtimeScope: typeof SIDE_EFFECT_PERMIT_RUNTIME_SCOPE;
   readonly permitId: string;
   readonly handoffId: string;
   readonly actionId: string;
@@ -96,11 +112,20 @@ function canonicalIntent(intent: SideEffectIntent): string {
   return JSON.stringify(intent);
 }
 
+function loadFreshCurrent(provider: CurrentStateProvider): CurrentStateSnapshot | null {
+  try {
+    const snapshot = provider.readCurrentState();
+    assertSnapshotInvariant(snapshot);
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
 export function issueSideEffectPermit(input: {
   handoffRequest: ExecutionHandoffRequest;
   handoffReceipt: VerifiedExecutionHandoffReceipt;
-  currentStateId: string;
-  currentStateRevision: number;
+  currentStateProvider: CurrentStateProvider;
   expectedWorker: WorkerExecutionBinding;
   intent: SideEffectIntent;
   now: string;
@@ -111,11 +136,16 @@ export function issueSideEffectPermit(input: {
     return { status: "HOLD", reason: "HANDOFF_NOT_VERIFIED" };
   }
 
+  const liveCurrent = loadFreshCurrent(input.currentStateProvider);
+  if (liveCurrent === null) {
+    return { status: "HOLD", reason: "CURRENT_PROVIDER_FAILURE" };
+  }
+
   if (
-    input.currentStateId !== handoffRequest.sourceStateId ||
-    input.currentStateRevision !== handoffRequest.sourceStateRevision ||
-    intent.sourceStateId !== input.currentStateId ||
-    intent.sourceStateRevision !== input.currentStateRevision
+    liveCurrent.identity.stateId !== handoffRequest.sourceStateId ||
+    liveCurrent.identity.stateRevision !== handoffRequest.sourceStateRevision ||
+    intent.sourceStateId !== liveCurrent.identity.stateId ||
+    intent.sourceStateRevision !== liveCurrent.identity.stateRevision
   ) {
     return { status: "HOLD", reason: "CURRENT_BINDING_MISMATCH" };
   }
@@ -176,6 +206,7 @@ export function issueSideEffectPermit(input: {
 
   const permit: VerifiedSideEffectPermit = Object.freeze({
     status: "PERMIT",
+    runtimeScope: SIDE_EFFECT_PERMIT_RUNTIME_SCOPE,
     permitId: intent.permitId,
     handoffId: intent.handoffId,
     actionId: intent.actionId,
@@ -207,6 +238,7 @@ export function isVerifiedSideEffectPermit(
   return (
     issuedPermits.has(permit) &&
     permit.status === "PERMIT" &&
+    permit.runtimeScope === SIDE_EFFECT_PERMIT_RUNTIME_SCOPE &&
     permit.intentCanonical === canonicalIntent(intent) &&
     Number.isFinite(nowMs) &&
     Number.isFinite(expiresAtMs) &&
