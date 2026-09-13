@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { BusMessage } from "../src/ai-communication-bus-core.js";
+import type { KiraWakeBridgeRecord } from "../src/ai-communication-bus-kira-wake-bridge.js";
 import {
   runLiveBusInvocation,
   type LiveBusInvocationPorts,
@@ -21,6 +22,20 @@ const message: BusMessage = {
 const wakeId = "259c01c3-8c82-47ee-affc-6aa2b1254735";
 const replyId = "d2705df9-0e52-44e0-bfec-db2e2a87551d";
 
+function confirmedWake(): KiraWakeBridgeRecord {
+  return {
+    messageId: message.messageId,
+    traceId: message.traceId,
+    targetAgentId: "KIRA",
+    current: structuredClone(message.current),
+    status: "CONFIRMED",
+    wakeMessageId: wakeId,
+    deploymentRunId: "run-1",
+    sessionId: "session-1",
+    observedAt: "2026-09-13T12:00:03Z",
+  };
+}
+
 function exactPorts(events: string[]): LiveBusInvocationPorts {
   return {
     async persistBusAndTransport(input) {
@@ -31,6 +46,10 @@ function exactPorts(events: string[]): LiveBusInvocationPorts {
         storedTraceId: input.message.traceId,
         storedProviderDeliveryId: input.evidence.providerDeliveryId ?? undefined,
       };
+    },
+    async loadExistingWake() {
+      events.push("load-existing-wake");
+      return null;
     },
     async enqueueManagedWake() {
       events.push("enqueue");
@@ -78,11 +97,11 @@ function baseInput(ports: LiveBusInvocationPorts) {
   };
 }
 
-test("runs exact persistence -> enqueue -> executor sequence and confirms", async () => {
+test("runs exact persistence -> recovery lookup -> enqueue -> executor sequence and confirms", async () => {
   const events: string[] = [];
   const decision = await runLiveBusInvocation(baseInput(exactPorts(events)));
   assert.equal(decision.status, "CONFIRMED");
-  assert.deepEqual(events, ["persist", "enqueue", `execute:${wakeId}`]);
+  assert.deepEqual(events, ["persist", "load-existing-wake", "enqueue", `execute:${wakeId}`]);
   if (decision.status !== "CONFIRMED") assert.fail("expected CONFIRMED");
   assert.equal(decision.evidence.providerDeliveryId, "1789302184.338689");
   assert.equal(decision.wake.status, "CONFIRMED");
@@ -130,7 +149,7 @@ test("invalid root MESSAGE fails before transport handling", async () => {
   assert.deepEqual(events, []);
 });
 
-test("persistence binding mismatch prevents wake enqueue", async () => {
+test("persistence binding mismatch prevents recovery lookup and wake enqueue", async () => {
   const events: string[] = [];
   const ports = exactPorts(events);
   ports.persistBusAndTransport = async () => {
@@ -149,6 +168,52 @@ test("persistence binding mismatch prevents wake enqueue", async () => {
     reason: "PERSISTENCE_BINDING_MISMATCH",
   });
   assert.deepEqual(events, ["persist"]);
+});
+
+test("exact confirmed replay reuses existing wake and never enqueues twice", async () => {
+  const events: string[] = [];
+  const ports = exactPorts(events);
+  ports.loadExistingWake = async () => {
+    events.push("load-existing-wake");
+    return confirmedWake();
+  };
+  const decision = await runLiveBusInvocation(baseInput(ports));
+  assert.equal(decision.status, "CONFIRMED");
+  if (decision.status !== "CONFIRMED") assert.fail("expected CONFIRMED");
+  assert.equal(decision.wake.wakeMessageId, wakeId);
+  assert.deepEqual(events, ["persist", "load-existing-wake"]);
+});
+
+test("conflicting existing wake binding fails closed before enqueue", async () => {
+  const events: string[] = [];
+  const ports = exactPorts(events);
+  ports.loadExistingWake = async () => {
+    events.push("load-existing-wake");
+    return { ...confirmedWake(), traceId: "foreign-trace" };
+  };
+  const decision = await runLiveBusInvocation(baseInput(ports));
+  assert.deepEqual(decision, {
+    status: "HOLD",
+    stage: "WAKE_RECOVERY",
+    reason: "EXISTING_WAKE_BINDING_MISMATCH",
+  });
+  assert.deepEqual(events, ["persist", "load-existing-wake"]);
+});
+
+test("non-confirmed existing wake requires explicit recovery and never enqueues twice", async () => {
+  const events: string[] = [];
+  const ports = exactPorts(events);
+  ports.loadExistingWake = async () => {
+    events.push("load-existing-wake");
+    return { ...confirmedWake(), status: "UNKNOWN", deploymentRunId: null, sessionId: null };
+  };
+  const decision = await runLiveBusInvocation(baseInput(ports));
+  assert.deepEqual(decision, {
+    status: "HOLD",
+    stage: "WAKE_RECOVERY",
+    reason: "EXISTING_WAKE_REQUIRES_RECOVERY",
+  });
+  assert.deepEqual(events, ["persist", "load-existing-wake"]);
 });
 
 test("forged MANAGED_WAKE enqueue receipt prevents executor call", async () => {
@@ -170,7 +235,7 @@ test("forged MANAGED_WAKE enqueue receipt prevents executor call", async () => {
     stage: "WAKE_ENQUEUE",
     reason: "INVALID_WAKE_EVIDENCE",
   });
-  assert.deepEqual(events, ["persist", "enqueue"]);
+  assert.deepEqual(events, ["persist", "load-existing-wake", "enqueue"]);
 });
 
 test("ambiguous executor result remains UNKNOWN", async () => {
@@ -186,7 +251,7 @@ test("ambiguous executor result remains UNKNOWN", async () => {
     stage: "WAKE_EXECUTION",
     reason: "WAKE_EXECUTION_AMBIGUOUS",
   });
-  assert.deepEqual(events, ["persist", "enqueue", `execute:${wakeId}`]);
+  assert.deepEqual(events, ["persist", "load-existing-wake", "enqueue", `execute:${wakeId}`]);
 });
 
 test("forged executor identity fails closed", async () => {
