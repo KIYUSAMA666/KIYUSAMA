@@ -27,9 +27,32 @@ test("single RPC validates message delivery and transport binding", () => {
   assert.match(sql, /p_evidence->>'targetAgentId' <> v_target/i);
 });
 
+test("direct DELIVERED creation is explicitly documented as a distinct atomic boundary", () => {
+  assert.match(sql, /DESIGN NOTE — intentional direct DELIVERED creation path/i);
+  assert.match(sql, /existing os2_bus_store_record entry point starts a brand-new durable BUS[\s\S]*at PENDING/i);
+  assert.match(sql, /called only after the provider has[\s\S]*returned explicit DELIVERED evidence/i);
+  assert.match(sql, /same PostgreSQL transaction[\s\S]*exact transport evidence/i);
+  assert.match(sql, /must never become a generic alternate BUS[\s\S]*writer or a source of execution authority/i);
+});
+
+test("migration ordering dependency on existing durable BUS messages is explicit", () => {
+  assert.match(sql, /MIGRATION ORDER: os2_bus_v01\.messages must already exist/i);
+});
+
 test("existing message and evidence rows are locked before idempotency decision", () => {
   assert.match(sql, /from os2_bus_v01\.messages[\s\S]*where message_id = v_message_id[\s\S]*for update/i);
   assert.match(sql, /from os2_bus_v01\.transport_evidence[\s\S]*where message_id = v_message_id[\s\S]*for update/i);
+});
+
+test("concurrent first message writers converge through ON CONFLICT then locked re-read", () => {
+  assert.match(sql, /insert into os2_bus_v01\.messages[\s\S]*on conflict \(message_id\) do nothing/i);
+  assert.match(sql, /on conflict \(message_id\) do nothing;[\s\S]*select \* into v_existing[\s\S]*for update/i);
+});
+
+test("concurrent first evidence writers converge and STORED versus IDEMPOTENT is explicit", () => {
+  assert.match(sql, /insert into os2_bus_v01\.transport_evidence[\s\S]*on conflict \(message_id\) do nothing/i);
+  assert.match(sql, /get diagnostics v_inserted_evidence = row_count/i);
+  assert.match(sql, /case when v_inserted_evidence = 1 then 'STORED' else 'IDEMPOTENT' end/i);
 });
 
 test("conflicting replay fails closed instead of rewriting evidence", () => {
