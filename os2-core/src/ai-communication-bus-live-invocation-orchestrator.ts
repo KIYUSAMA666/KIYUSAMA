@@ -30,6 +30,7 @@ export interface LiveBusInvocationPorts {
     evidence: TransportEvidence;
     delivery: BusDeliveryRecord;
   }): Promise<LiveBusPersistenceReceipt>;
+  loadExistingWake(delivery: BusDeliveryRecord): Promise<KiraWakeBridgeRecord | null>;
   enqueueManagedWake(delivery: BusDeliveryRecord): Promise<ManagedWakeEnqueueReceipt>;
   executeManagedWake(wakeMessageId: string): Promise<ManagedWakeExecutorReceipt>;
 }
@@ -54,6 +55,7 @@ export type LiveBusInvocationDecision =
         | "SLACK_EVIDENCE"
         | "DELIVERY"
         | "PERSISTENCE"
+        | "WAKE_RECOVERY"
         | "WAKE_ENQUEUE"
         | "WAKE_EXECUTION";
       reason: string;
@@ -70,6 +72,35 @@ function exactPersistenceBinding(
     receipt.storedTraceId === message.traceId &&
     receipt.storedProviderDeliveryId === evidence.providerDeliveryId
   );
+}
+
+function exactExistingWakeBinding(
+  existing: KiraWakeBridgeRecord,
+  delivery: BusDeliveryRecord,
+): boolean {
+  return (
+    existing.messageId === delivery.message.messageId &&
+    existing.traceId === delivery.message.traceId &&
+    existing.targetAgentId === "KIRA" &&
+    delivery.message.targetAgentId === "KIRA" &&
+    existing.current.stateId === delivery.message.current.stateId &&
+    existing.current.stateRevision === delivery.message.current.stateRevision
+  );
+}
+
+function confirmedReplayDecision(
+  message: BusMessage,
+  evidence: TransportEvidence,
+  delivery: BusDeliveryRecord,
+  existing: KiraWakeBridgeRecord,
+): LiveBusInvocationDecision {
+  return {
+    status: "CONFIRMED",
+    message: structuredClone(message),
+    evidence: structuredClone(evidence),
+    delivery: structuredClone(delivery),
+    wake: structuredClone(existing),
+  };
 }
 
 export async function runLiveBusInvocation(input: {
@@ -120,6 +151,27 @@ export async function runLiveBusInvocation(input: {
   });
   if (!exactPersistenceBinding(persistence, published.value.message, slackEvidence.evidence)) {
     return { status: "HOLD", stage: "PERSISTENCE", reason: "PERSISTENCE_BINDING_MISMATCH" };
+  }
+
+  const existingWake = await input.ports.loadExistingWake(delivered.value);
+  if (existingWake !== null) {
+    if (!exactExistingWakeBinding(existingWake, delivered.value)) {
+      return { status: "HOLD", stage: "WAKE_RECOVERY", reason: "EXISTING_WAKE_BINDING_MISMATCH" };
+    }
+    if (
+      existingWake.status === "CONFIRMED" &&
+      existingWake.wakeMessageId !== null &&
+      existingWake.deploymentRunId !== null &&
+      existingWake.sessionId !== null
+    ) {
+      return confirmedReplayDecision(
+        published.value.message,
+        slackEvidence.evidence,
+        delivered.value,
+        existingWake,
+      );
+    }
+    return { status: "HOLD", stage: "WAKE_RECOVERY", reason: "EXISTING_WAKE_REQUIRES_RECOVERY" };
   }
 
   const enqueueReceipt = await input.ports.enqueueManagedWake(delivered.value);
