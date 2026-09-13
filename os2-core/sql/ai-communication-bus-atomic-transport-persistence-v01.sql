@@ -155,9 +155,11 @@ begin
     return jsonb_build_object('status','BINDING_MISMATCH');
   end if;
 
-  -- Apply the same concurrency rule to transport evidence. The row insert and
-  -- the BUS message insert remain in this one transaction. A conflicting first
-  -- writer is re-read and must match every immutable binding exactly.
+  -- Transport evidence is immutable: service_role intentionally receives only
+  -- SELECT + INSERT, never UPDATE. ON CONFLICT DO NOTHING already waits for a
+  -- concurrent same-key insertion to resolve, so a plain re-read is sufficient
+  -- to observe the winning immutable row without requiring FOR UPDATE privilege.
+  -- The BUS message insert and evidence insert still remain in this transaction.
   insert into os2_bus_v01.transport_evidence(
     message_id,trace_id,target_agent_id,provider,provider_delivery_id,observed_at,status
   ) values (
@@ -167,8 +169,7 @@ begin
 
   select * into v_evidence
   from os2_bus_v01.transport_evidence
-  where message_id = v_message_id
-  for update;
+  where message_id = v_message_id;
 
   if not found then
     return jsonb_build_object('status','BACKEND_FAILURE');
