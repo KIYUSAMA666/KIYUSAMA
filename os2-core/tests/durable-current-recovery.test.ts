@@ -105,3 +105,43 @@ test("10 recovery returns a clone, not provider-owned object", () => {
   result.current.mainLineTask.description = "mutated locally";
   assert.equal(r.current.mainLineTask.description, "test recovery");
 });
+
+test("11 malformed active guard cannot re-enter through durable recovery", () => {
+  const r = record();
+  r.current.activeGuards = [{ guardId: "G1", rule: "deny stale state", refConfirmed: "FORGED" }];
+  assert.equal(recoverDurableCurrent(r, expected).reason, "MALFORMED_CURRENT");
+});
+
+test("12 malformed confirmed ref cannot re-enter through durable recovery", () => {
+  const r = record();
+  r.current.confirmedRefIndex = [{ id: "R1", status: "VERIFIED", expectedVersion: 99, path: null }];
+  assert.equal(recoverDurableCurrent(r, expected).reason, "MALFORMED_CURRENT");
+});
+
+test("13 malformed authority map cannot re-enter through durable recovery", () => {
+  const r = record();
+  r.current.activeRolesAndAuthority = { SORA: { role: "AGGREGATOR" } };
+  assert.equal(recoverDurableCurrent(r, expected).reason, "MALFORMED_CURRENT");
+});
+
+test("14 invalid effectiveAt cannot re-enter through durable recovery", () => {
+  const r = record();
+  r.current.identity.effectiveAt = "not-a-time";
+  assert.equal(recoverDurableCurrent(r, expected).reason, "MALFORMED_CURRENT");
+});
+
+test("15 malformed independent lane cannot re-enter through durable recovery", () => {
+  const r = record();
+  r.current.independentLaneHealth.evidenceVerdict = "TRUST_ME";
+  assert.equal(recoverDurableCurrent(r, expected).reason, "MALFORMED_CURRENT");
+});
+
+test("16 parser rebuild strips unknown durable payload fields", () => {
+  const r = record();
+  r.current.injectedExecutionAuthority = "EXECUTE_ANYTHING";
+  r.current.identity.injected = "SHOULD_NOT_SURVIVE";
+  const result = recoverDurableCurrent(r, expected);
+  assert.equal(result.status, "RECOVERED");
+  assert.equal("injectedExecutionAuthority" in result.current, false);
+  assert.equal("injected" in result.current.identity, false);
+});
