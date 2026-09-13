@@ -1,0 +1,81 @@
+name: OS2 PR119 Real DB Proof
+
+on:
+  pull_request:
+    paths:
+      - 'os2-core/**'
+      - '.github/workflows/os2-pr119-real-db-proof.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pr119-real-db-proof:
+    if: github.event.pull_request.number == 119
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: os2-core
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: os2-core/package-lock.json
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.84.2
+
+      - name: Build recovery logic
+        run: |
+          npm install --ignore-scripts
+          npx tsc -p tsconfig.json
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Prepare isolated Supabase migrations
+        working-directory: .
+        run: |
+          rm -rf supabase
+          supabase init
+          mkdir -p supabase/migrations
+          cp os2-core/sql/ai-communication-bus-durable-backend-v01.sql \
+            supabase/migrations/20260913051125_os2_ai_communication_bus_durable_backend_v01.sql
+          cp os2-core/sql/ai-communication-bus-durable-backend-policy-v01.sql \
+            supabase/migrations/20260913051310_os2_ai_communication_bus_durable_backend_policy_v01.sql
+          cp os2-core/sql/ai-communication-bus-atomic-transport-persistence-v01.sql \
+            supabase/migrations/20260913140000_pr119_atomic_bus_transport_persistence_v01.sql
+
+      - name: Start disposable Supabase stack and apply migrations in order
+        working-directory: .
+        run: |
+          supabase start
+          supabase db reset --local
+
+      - name: Run PR119 real PostgreSQL and Supabase boundary proof
+        run: |
+          supabase status -o env > /tmp/pr119-supabase.env
+          set -a
+          source /tmp/pr119-supabase.env
+          set +a
+
+          export DATABASE_URL="$DB_URL"
+          export SUPABASE_URL="$API_URL"
+          export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          export SUPABASE_ANON_KEY="$ANON_KEY"
+
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema';"
+          sleep 2
+          bash scripts/pr119-real-db-proof.sh
+
+      - name: Stop disposable Supabase stack
+        if: always()
+        working-directory: .
+        run: supabase stop --no-backup || true
