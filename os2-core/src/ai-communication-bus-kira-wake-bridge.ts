@@ -14,8 +14,10 @@ export interface KiraWakeBridgeRecord {
   current: BusCurrentBinding;
   status: KiraWakeStatus;
   wakeMessageId: string | null;
-  deploymentRunId: string | null;
   sessionId: string | null;
+  receiverExecutionId: string | null;
+  replyMessageId: string | null;
+  traceAuditActionId: string | null;
   observedAt: string | null;
 }
 
@@ -34,8 +36,10 @@ export type KiraWakeResult =
       traceId: string;
       targetAgentId: "KIRA";
       wakeMessageId: string;
-      deploymentRunId: string;
       sessionId: string;
+      receiverExecutionId: string;
+      replyMessageId: string;
+      traceAuditActionId: string;
       observedAt: string;
       authorityGranted?: boolean;
     }
@@ -118,8 +122,10 @@ export function prepareKiraWake(
     current: structuredClone(delivery.message.current),
     status: "PENDING",
     wakeMessageId: null,
-    deploymentRunId: null,
     sessionId: null,
+    receiverExecutionId: null,
+    replyMessageId: null,
+    traceAuditActionId: null,
     observedAt: null,
   };
 
@@ -193,8 +199,10 @@ export function applyKiraWakeResult(
     if (
       result.outcome === "CONSUMED" &&
       result.wakeMessageId === record.wakeMessageId &&
-      result.deploymentRunId === record.deploymentRunId &&
-      result.sessionId === record.sessionId
+      result.sessionId === record.sessionId &&
+      result.receiverExecutionId === record.receiverExecutionId &&
+      result.replyMessageId === record.replyMessageId &&
+      result.traceAuditActionId === record.traceAuditActionId
     ) {
       return { status: "IDEMPOTENT", value: structuredClone(record) };
     }
@@ -229,8 +237,10 @@ export function applyKiraWakeResult(
   if (
     record.wakeMessageId === null ||
     result.wakeMessageId !== record.wakeMessageId ||
-    !validNonEmpty(result.deploymentRunId) ||
-    !validNonEmpty(result.sessionId)
+    !validNonEmpty(result.sessionId) ||
+    !validNonEmpty(result.receiverExecutionId) ||
+    !validUuid(result.replyMessageId) ||
+    !validUuid(result.traceAuditActionId)
   ) {
     return { status: "HOLD", reason: "INVALID_WAKE_EVIDENCE" };
   }
@@ -240,8 +250,10 @@ export function applyKiraWakeResult(
     value: {
       ...structuredClone(record),
       status: "CONFIRMED",
-      deploymentRunId: result.deploymentRunId,
       sessionId: result.sessionId,
+      receiverExecutionId: result.receiverExecutionId,
+      replyMessageId: result.replyMessageId,
+      traceAuditActionId: result.traceAuditActionId,
       observedAt: result.observedAt,
     },
   };
