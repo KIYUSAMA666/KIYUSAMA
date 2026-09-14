@@ -21,6 +21,7 @@ export interface ManagedWakeExecutorReceipt {
   ok: boolean;
   status?: string;
   error?: string;
+  trace_audit_action_id?: string;
   trace_authentication?: {
     device_model?: string;
     executed_function?: string;
@@ -29,9 +30,23 @@ export interface ManagedWakeExecutorReceipt {
     agent_id?: string;
     environment_id?: string;
     reply_message_id?: string;
-    deployment_run_id?: string;
     session_id?: string;
   };
+}
+
+export interface ManagedWakeAuditRow {
+  action_id?: string;
+  event_type?: string;
+  actor_id?: string;
+  target_type?: string;
+  target_id?: string;
+  result?: string;
+  evidence?: Record<string, unknown> | null;
+}
+
+export interface ManagedWakeEvidenceReadback {
+  traceAudit: ManagedWakeAuditRow;
+  replyStoredAudit: ManagedWakeAuditRow;
 }
 
 export type LiveKiraAdapterDecision = KiraWakeDecision<KiraWakeBridgeRecord>;
@@ -42,6 +57,56 @@ function nonEmpty(v: unknown): v is string {
 
 function uuid(v: unknown): v is string {
   return typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function exactTraceAudit(
+  record: KiraWakeBridgeRecord,
+  receipt: ManagedWakeExecutorReceipt,
+  readback: ManagedWakeEvidenceReadback,
+): boolean {
+  const trace = receipt.trace_authentication;
+  const audit = readback.traceAudit;
+  const evidence = audit.evidence;
+  if (!trace || !evidence || typeof evidence !== "object") return false;
+  return (
+    uuid(receipt.trace_audit_action_id) &&
+    audit.action_id === receipt.trace_audit_action_id &&
+    audit.event_type === "KIRA_BC_TRACE_AUTH" &&
+    audit.actor_id === "KIRA_MANAGED_WAKE_V1" &&
+    audit.target_type === "agent_message" &&
+    audit.target_id === record.wakeMessageId &&
+    audit.result === "SUCCESS" &&
+    evidence.device_model === trace.device_model &&
+    evidence.executed_function === trace.executed_function &&
+    evidence.message_id === trace.message_id &&
+    evidence.receiver_execution_id === trace.receiver_execution_id &&
+    evidence.agent_id === trace.agent_id &&
+    evidence.environment_id === trace.environment_id &&
+    evidence.reply_message_id === trace.reply_message_id &&
+    evidence.session_id === trace.session_id
+  );
+}
+
+function exactReplyStoredAudit(
+  record: KiraWakeBridgeRecord,
+  receipt: ManagedWakeExecutorReceipt,
+  readback: ManagedWakeEvidenceReadback,
+): boolean {
+  const trace = receipt.trace_authentication;
+  const audit = readback.replyStoredAudit;
+  const evidence = audit.evidence;
+  if (!trace || !evidence || typeof evidence !== "object") return false;
+  return (
+    audit.event_type === "AI_EXECUTOR_REPLY_STORED" &&
+    audit.actor_id === "KIRA_EXECUTOR_V2C" &&
+    audit.target_type === "agent_message" &&
+    audit.target_id === trace.reply_message_id &&
+    audit.result === "SUCCESS" &&
+    evidence.parent_message_id === record.wakeMessageId &&
+    evidence.execution_id === trace.receiver_execution_id &&
+    evidence.trust_class === "AUTHENTICATED_INTERNAL" &&
+    evidence.instruction_scope === "REVIEW_ONLY"
+  );
 }
 
 export function bindManagedWakeEnqueue(
@@ -73,6 +138,7 @@ export function bindManagedWakeEnqueue(
 export function bindManagedWakeExecutorResult(
   record: KiraWakeBridgeRecord,
   receipt: ManagedWakeExecutorReceipt,
+  readback: ManagedWakeEvidenceReadback | null,
   observedAt: string,
 ): LiveKiraAdapterDecision {
   if (!receipt.ok) {
@@ -86,6 +152,7 @@ export function bindManagedWakeExecutorResult(
       observedAt,
     });
   }
+
   const trace = receipt.trace_authentication;
   if (
     !trace ||
@@ -96,23 +163,30 @@ export function bindManagedWakeExecutorResult(
     !nonEmpty(trace.agent_id) ||
     !nonEmpty(trace.environment_id) ||
     !uuid(trace.reply_message_id) ||
-    !nonEmpty(trace.session_id)
+    !nonEmpty(trace.session_id) ||
+    !uuid(receipt.trace_audit_action_id)
   ) {
     return { status: "HOLD", reason: "INVALID_WAKE_EVIDENCE" };
   }
-  // Older production executor receipts did not expose deployment_run_id.
-  // Never invent it: require explicit provider evidence before CONFIRMED.
-  if (!nonEmpty(trace.deployment_run_id)) {
+
+  if (readback === null) {
     return { status: "UNKNOWN", value: { ...structuredClone(record), status: "UNKNOWN", observedAt } };
   }
+
+  if (!exactTraceAudit(record, receipt, readback) || !exactReplyStoredAudit(record, receipt, readback)) {
+    return { status: "HOLD", reason: "INVALID_WAKE_EVIDENCE" };
+  }
+
   return applyKiraWakeResult(record, {
     outcome: "CONSUMED",
     messageId: record.messageId,
     traceId: record.traceId,
     targetAgentId: "KIRA",
     wakeMessageId: record.wakeMessageId!,
-    deploymentRunId: trace.deployment_run_id,
     sessionId: trace.session_id,
+    receiverExecutionId: trace.receiver_execution_id,
+    replyMessageId: trace.reply_message_id,
+    traceAuditActionId: receipt.trace_audit_action_id,
     observedAt,
   });
 }
