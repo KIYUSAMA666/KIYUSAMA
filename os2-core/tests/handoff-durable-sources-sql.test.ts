@@ -7,9 +7,11 @@ import { dirname, resolve } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const sql = readFileSync(resolve(here, "../sql/handoff-durable-sources-v01.sql"), "utf8");
 
-test("1 reuses existing executor capability identity instead of creating a duplicate capability system", () => {
-  assert.match(sql, /capability_id uuid primary key references common_memory\.executor_capabilities\(id\)/i);
-  assert.doesNotMatch(sql, /create table[^;]*executor_capabilities/i);
+test("1 stable logical capability identity is separated from short-lived executor token instances", () => {
+  assert.match(sql, /capability_id text primary key check \(btrim\(capability_id\) <> ''\)/i);
+  assert.doesNotMatch(sql, /references common_memory\.executor_capabilities\(id\)/i);
+  assert.match(sql, /executor_capabilities rows are short-lived token instances/i);
+  assert.match(sql, /token\/TTL\/single-use\/payload-hash enforcement remains a separate runtime boundary/i);
 });
 
 test("2 implementation verification semantics are separate from payload hash semantics", () => {
@@ -47,7 +49,7 @@ test("6 bound capability requires verified binding evidence", () => {
 test("7 read RPCs are fail-closed on stale revisions and unavailable to public clients", () => {
   assert.match(sql, /os2_handoff_read_capability_binding_v01/i);
   assert.match(sql, /os2_handoff_read_action_evidence_requirement_v01/i);
-  assert.match(sql, /revoke all on function public\.os2_handoff_read_capability_binding_v01\(uuid,bigint\) from public, anon, authenticated/i);
+  assert.match(sql, /revoke all on function public\.os2_handoff_read_capability_binding_v01\(text,bigint\) from public, anon, authenticated/i);
   assert.match(sql, /revoke all on function public\.os2_handoff_read_action_evidence_requirement_v01\(text,bigint\) from public, anon, authenticated/i);
 });
 
