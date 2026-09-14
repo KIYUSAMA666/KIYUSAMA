@@ -28,7 +28,10 @@ function binding() {
   };
 }
 
-function containers() {
+function containers(): {
+  requestPayload: Record<string, unknown>;
+  evidence: Record<string, unknown>;
+} {
   return {
     requestPayload: {
       path: "legacy-field-remains-intact",
@@ -39,6 +42,10 @@ function containers() {
       [EXECUTION_V0_BUS_IDENTITY_KEY]: binding(),
     },
   };
+}
+
+function mutableBinding(container: Record<string, unknown>): Record<string, unknown> {
+  return container[EXECUTION_V0_BUS_IDENTITY_KEY] as Record<string, unknown>;
 }
 
 test("1 exact BUS identity in both existing JSON containers passes", () => {
@@ -76,7 +83,7 @@ test("4 missing evidence binding fails closed", () => {
 
 test("5 messageId substitution in request_payload is rejected", () => {
   const c = containers();
-  c.requestPayload[EXECUTION_V0_BUS_IDENTITY_KEY].messageId = "ATTACK";
+  mutableBinding(c.requestPayload).messageId = "ATTACK";
   assert.deepEqual(verifyExecutionV0BusIdentityBinding({ message, ...c }), {
     status: "HOLD",
     reason: "REQUEST_BINDING_MISMATCH",
@@ -85,7 +92,7 @@ test("5 messageId substitution in request_payload is rejected", () => {
 
 test("6 traceId substitution in evidence is rejected", () => {
   const c = containers();
-  c.evidence[EXECUTION_V0_BUS_IDENTITY_KEY].traceId = "ATTACK";
+  mutableBinding(c.evidence).traceId = "ATTACK";
   assert.deepEqual(verifyExecutionV0BusIdentityBinding({ message, ...c }), {
     status: "HOLD",
     reason: "EVIDENCE_BINDING_MISMATCH",
@@ -94,7 +101,7 @@ test("6 traceId substitution in evidence is rejected", () => {
 
 test("7 stateId substitution is rejected", () => {
   const c = containers();
-  c.requestPayload[EXECUTION_V0_BUS_IDENTITY_KEY].stateId = "OTHER-STATE";
+  mutableBinding(c.requestPayload).stateId = "OTHER-STATE";
   assert.deepEqual(verifyExecutionV0BusIdentityBinding({ message, ...c }), {
     status: "HOLD",
     reason: "REQUEST_BINDING_MISMATCH",
@@ -103,7 +110,7 @@ test("7 stateId substitution is rejected", () => {
 
 test("8 stateRevision substitution is rejected", () => {
   const c = containers();
-  c.evidence[EXECUTION_V0_BUS_IDENTITY_KEY].stateRevision = 8;
+  mutableBinding(c.evidence).stateRevision = 8;
   assert.deepEqual(verifyExecutionV0BusIdentityBinding({ message, ...c }), {
     status: "HOLD",
     reason: "EVIDENCE_BINDING_MISMATCH",
@@ -115,7 +122,7 @@ test("9 malformed or extra-key identity is rejected", () => {
   c.requestPayload[EXECUTION_V0_BUS_IDENTITY_KEY] = {
     ...binding(),
     authority: "FORGED",
-  } as typeof c.requestPayload[typeof EXECUTION_V0_BUS_IDENTITY_KEY];
+  };
   assert.deepEqual(verifyExecutionV0BusIdentityBinding({ message, ...c }), {
     status: "HOLD",
     reason: "BUS_IDENTITY_INVALID",
