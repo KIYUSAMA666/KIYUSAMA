@@ -13,6 +13,7 @@ import {
   bindManagedWakeEnqueue,
   bindManagedWakeExecutorResult,
   type ManagedWakeEnqueueReceipt,
+  type ManagedWakeEvidenceReadback,
   type ManagedWakeExecutorReceipt,
 } from "./ai-communication-bus-live-kira-adapter.js";
 import type { TransportEvidence } from "./ai-communication-bus-transport-evidence.js";
@@ -39,6 +40,10 @@ export interface LiveBusInvocationPorts {
   loadExistingWake(delivery: BusDeliveryRecord): Promise<KiraWakeBridgeRecord | null>;
   enqueueManagedWake(delivery: BusDeliveryRecord): Promise<ManagedWakeEnqueueReceipt>;
   executeManagedWake(wakeMessageId: string): Promise<ManagedWakeExecutorReceipt>;
+  readManagedWakeEvidence(input: {
+    wakeMessageId: string;
+    receipt: ManagedWakeExecutorReceipt;
+  }): Promise<ManagedWakeEvidenceReadback | null>;
 }
 
 export type LiveBusInvocationDecision =
@@ -194,8 +199,10 @@ export async function runLiveBusInvocation(input: {
     if (
       existingWake.status === "CONFIRMED" &&
       existingWake.wakeMessageId !== null &&
-      existingWake.deploymentRunId !== null &&
-      existingWake.sessionId !== null
+      existingWake.sessionId !== null &&
+      existingWake.receiverExecutionId !== null &&
+      existingWake.replyMessageId !== null &&
+      existingWake.traceAuditActionId !== null
     ) {
       return confirmedReplayDecision(
         published.value.message,
@@ -240,9 +247,16 @@ export async function runLiveBusInvocation(input: {
   }
 
   const executorReceipt = await input.ports.executeManagedWake(wakeBound.value.wakeMessageId);
+  const evidenceReadback = executorReceipt.ok
+    ? await input.ports.readManagedWakeEvidence({
+        wakeMessageId: wakeBound.value.wakeMessageId,
+        receipt: executorReceipt,
+      })
+    : null;
   const wakeResult = bindManagedWakeExecutorResult(
     wakeBound.value,
     executorReceipt,
+    evidenceReadback,
     input.wakeExecutionObservedAt,
   );
   if (wakeResult.status === "UNKNOWN") {
