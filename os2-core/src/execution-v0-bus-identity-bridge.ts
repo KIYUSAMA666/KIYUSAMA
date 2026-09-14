@@ -14,8 +14,7 @@ export type ExecutionV0BusIdentityBridgeHoldReason =
   | "BUS_IDENTITY_MISSING"
   | "BUS_IDENTITY_INVALID"
   | "REQUEST_BINDING_MISMATCH"
-  | "EVIDENCE_BINDING_MISMATCH"
-  | "REQUEST_EVIDENCE_BINDING_MISMATCH";
+  | "EVIDENCE_BINDING_MISMATCH";
 
 export type ExecutionV0BusIdentityBridgeDecision =
   | { status: "PASS"; binding: ExecutionV0BusIdentityBinding }
@@ -73,9 +72,10 @@ export function busMessageToExecutionV0Identity(message: BusMessage): ExecutionV
 
 /**
  * Fail-closed bridge between BUS identity and the existing execution_v0 JSON
- * containers. This function intentionally performs no worker claim, network
- * operation, permit issuance, or state transition. Callers must PASS this
- * check before entering gateway_worker_pre_network_fence_v0 / durable egress.
+ * containers. Each stored binding must independently equal the BUS identity.
+ * This function intentionally performs no worker claim, network operation,
+ * permit issuance, or state transition. Callers must PASS this check before
+ * entering gateway_worker_pre_network_fence_v0 / durable egress.
  */
 export function verifyExecutionV0BusIdentityBinding(input: {
   message: BusMessage;
@@ -104,9 +104,6 @@ export function verifyExecutionV0BusIdentityBinding(input: {
   }
   if (!exactBinding(evidenceBinding, expected)) {
     return { status: "HOLD", reason: "EVIDENCE_BINDING_MISMATCH" };
-  }
-  if (!exactBinding(requestBinding, evidenceBinding)) {
-    return { status: "HOLD", reason: "REQUEST_EVIDENCE_BINDING_MISMATCH" };
   }
 
   return { status: "PASS", binding: expected };
