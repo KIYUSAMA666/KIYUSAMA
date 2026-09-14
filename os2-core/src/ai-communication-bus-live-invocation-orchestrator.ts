@@ -6,6 +6,7 @@ import {
 } from "./ai-communication-bus-core.js";
 import {
   slackSendResultToEvidence,
+  type SlackEvidenceAdmissionFence,
   type SlackSendResult,
 } from "./ai-communication-bus-slack-adapter.js";
 import {
@@ -128,6 +129,7 @@ export async function runLiveBusInvocation(input: {
   expectedSlackChannelId: string;
   slackSendResult: Partial<SlackSendResult> | null | undefined;
   slackObservedAt: string;
+  slackEvidenceFence: SlackEvidenceAdmissionFence;
   wakeEnqueueObservedAt: string;
   wakeExecutionObservedAt: string;
   wakeEnqueueFence: {
@@ -152,6 +154,7 @@ export async function runLiveBusInvocation(input: {
     expectedChannelId: input.expectedSlackChannelId,
     sendResult: input.slackSendResult,
     observedAt: input.slackObservedAt,
+    admissionFence: input.slackEvidenceFence,
   });
   if (slackEvidence.status === "UNKNOWN") {
     return { status: "UNKNOWN", stage: "SLACK_EVIDENCE", reason: slackEvidence.reason };

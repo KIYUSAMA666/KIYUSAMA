@@ -1,5 +1,10 @@
 import type { BusMessage } from "./ai-communication-bus-core.js";
 import type { TransportEvidence } from "./ai-communication-bus-transport-evidence.js";
+import {
+  isVerifiedSideEffectPermit,
+  type SideEffectIntent,
+  type VerifiedSideEffectPermit,
+} from "./side-effect-fence.js";
 
 export interface SlackSendResult {
   channelId: string;
@@ -7,10 +12,22 @@ export interface SlackSendResult {
   messageLink: string;
 }
 
+export interface SlackEvidenceAdmissionFence {
+  permit: VerifiedSideEffectPermit;
+  intent: SideEffectIntent;
+  dispatchNow: string;
+}
+
 export type SlackAdapterDecision =
   | { status: "EVIDENCE"; evidence: TransportEvidence }
   | { status: "UNKNOWN"; reason: "SLACK_SEND_RESULT_AMBIGUOUS" }
-  | { status: "HOLD"; reason: "SLACK_CHANNEL_MISMATCH" | "INVALID_SLACK_SEND_RESULT" };
+  | {
+      status: "HOLD";
+      reason:
+        | "SLACK_EVIDENCE_PERMIT_INVALID"
+        | "SLACK_CHANNEL_MISMATCH"
+        | "INVALID_SLACK_SEND_RESULT";
+    };
 
 function nonEmpty(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -28,6 +45,22 @@ function validSlackMessageLink(value: unknown): value is string {
   } catch {
     return false;
   }
+}
+
+function exactSlackEvidenceAdmissionFence(input: {
+  message: BusMessage;
+  expectedChannelId: string;
+  fence: SlackEvidenceAdmissionFence;
+}): boolean {
+  const { message, expectedChannelId, fence } = input;
+  return (
+    isVerifiedSideEffectPermit(fence.permit, fence.intent, fence.dispatchNow) &&
+    fence.intent.effectClass === "EXTERNAL_MESSAGE" &&
+    fence.intent.target === `slack-evidence:${message.messageId}:${expectedChannelId}` &&
+    fence.intent.operation === "admitSlackSendResult" &&
+    fence.intent.sourceStateId === message.current.stateId &&
+    fence.intent.sourceStateRevision === message.current.stateRevision
+  );
 }
 
 export function createSlackOutboundText(message: BusMessage): string {
@@ -48,8 +81,13 @@ export function slackSendResultToEvidence(input: {
   expectedChannelId: string;
   sendResult: Partial<SlackSendResult> | null | undefined;
   observedAt: string;
+  admissionFence: SlackEvidenceAdmissionFence;
 }): SlackAdapterDecision {
-  const { message, expectedChannelId, sendResult, observedAt } = input;
+  const { message, expectedChannelId, sendResult, observedAt, admissionFence } = input;
+
+  if (!exactSlackEvidenceAdmissionFence({ message, expectedChannelId, fence: admissionFence })) {
+    return { status: "HOLD", reason: "SLACK_EVIDENCE_PERMIT_INVALID" };
+  }
 
   if (!nonEmpty(expectedChannelId) || !nonEmpty(observedAt) || !Number.isFinite(Date.parse(observedAt))) {
     return { status: "HOLD", reason: "INVALID_SLACK_SEND_RESULT" };
