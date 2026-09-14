@@ -88,15 +88,23 @@ export async function loadDurableCapabilityBinding(input: {
     if (error !== null) return { status: "HOLD", reason: "SOURCE_ERROR" };
     if (!isRecord(data) || data.ok !== true) return { status: "HOLD", reason: "NOT_READY" };
 
+    const capabilityId = data.capabilityId;
+    const implementationId = data.implementationId;
+    const source = data.source;
+    const version = data.version;
+    const verified = data.verified;
+    const bindingRevision = data.bindingRevision;
+    const verificationRef = data.verificationRef;
+
     if (
-      data.capabilityId !== input.capabilityId ||
-      !nonEmpty(data.implementationId) ||
-      !isCapabilitySource(data.source) ||
-      !nonEmpty(data.version) ||
-      data.verified !== true ||
-      !positiveInteger(data.bindingRevision) ||
-      data.bindingRevision !== input.expectedRevision ||
-      !nonEmpty(data.verificationRef)
+      capabilityId !== input.capabilityId ||
+      !nonEmpty(implementationId) ||
+      !isCapabilitySource(source) ||
+      !nonEmpty(version) ||
+      verified !== true ||
+      !positiveInteger(bindingRevision) ||
+      bindingRevision !== input.expectedRevision ||
+      !nonEmpty(verificationRef)
     ) {
       return { status: "HOLD", reason: "INVALID_RECORD" };
     }
@@ -104,17 +112,17 @@ export async function loadDurableCapabilityBinding(input: {
     return {
       status: "READY",
       record: {
-        bindingRevision: data.bindingRevision,
-        verificationRef: data.verificationRef,
+        bindingRevision,
+        verificationRef,
         slot: {
           slotId: input.slotId,
           capabilityId: input.capabilityId,
           status: "BOUND",
           binding: {
             capabilityId: input.capabilityId,
-            implementationId: data.implementationId,
-            source: data.source,
-            version: data.version,
+            implementationId,
+            source,
+            version,
             verified: true,
           },
         },
@@ -142,13 +150,17 @@ export async function loadDurableActionEvidenceRequirement(input: {
     if (error !== null) return { status: "HOLD", reason: "SOURCE_ERROR" };
     if (!isRecord(data) || data.ok !== true) return { status: "HOLD", reason: "NOT_READY" };
 
+    const actionId = data.actionId;
+    const requirementRevision = data.requirementRevision;
     const requiredRefs = parseRequiredRefs(data.requiredRefs);
+    const requireIndependentLane = data.requireIndependentLane;
+
     if (
-      data.actionId !== input.actionId ||
-      !positiveInteger(data.requirementRevision) ||
-      data.requirementRevision !== input.expectedRevision ||
+      actionId !== input.actionId ||
+      !positiveInteger(requirementRevision) ||
+      requirementRevision !== input.expectedRevision ||
       requiredRefs === null ||
-      typeof data.requireIndependentLane !== "boolean"
+      typeof requireIndependentLane !== "boolean"
     ) {
       return { status: "HOLD", reason: "INVALID_RECORD" };
     }
@@ -156,11 +168,11 @@ export async function loadDurableActionEvidenceRequirement(input: {
     return {
       status: "READY",
       record: {
-        requirementRevision: data.requirementRevision,
+        requirementRevision,
         requirement: {
           actionId: input.actionId,
           requiredRefs,
-          requireIndependentLane: data.requireIndependentLane,
+          requireIndependentLane,
         },
       },
     };
