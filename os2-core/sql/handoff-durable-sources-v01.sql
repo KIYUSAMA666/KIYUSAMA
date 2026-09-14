@@ -37,7 +37,7 @@ as $$
 $$;
 
 create table if not exists os2_handoff_v01.capability_bindings (
-  capability_id uuid primary key references common_memory.executor_capabilities(id) on delete cascade,
+  capability_id text primary key check (btrim(capability_id) <> ''),
   implementation_id text not null check (btrim(implementation_id) <> ''),
   source text not null check (source in ('NATIVE','HISTORY','EXTERNAL')),
   version text not null check (btrim(version) <> ''),
@@ -56,6 +56,8 @@ create table if not exists os2_handoff_v01.capability_bindings (
   )
 );
 
+comment on column os2_handoff_v01.capability_bindings.capability_id is
+  'Stable logical CapabilitySlot identity. It is intentionally NOT common_memory.executor_capabilities.id, because executor_capabilities rows are short-lived token instances. Existing executor capability token/TTL/single-use/payload-hash enforcement remains a separate runtime boundary and is not duplicated here.';
 comment on column os2_handoff_v01.capability_bindings.binding_revision is
   'Mandatory monotonic binding revision. Runtime callers must present the expected revision; stale bindings fail closed.';
 comment on column os2_handoff_v01.capability_bindings.verified is
@@ -83,7 +85,7 @@ grant select on table os2_handoff_v01.capability_bindings to service_role;
 grant select on table os2_handoff_v01.action_evidence_requirements to service_role;
 
 create or replace function public.os2_handoff_read_capability_binding_v01(
-  p_capability_id uuid,
+  p_capability_id text,
   p_expected_revision bigint
 )
 returns jsonb
@@ -94,7 +96,7 @@ as $$
 declare
   r os2_handoff_v01.capability_bindings%rowtype;
 begin
-  if p_capability_id is null or p_expected_revision is null or p_expected_revision <= 0 then
+  if p_capability_id is null or btrim(p_capability_id) = '' or p_expected_revision is null or p_expected_revision <= 0 then
     return jsonb_build_object('ok', false, 'reason', 'INVALID_INPUT');
   end if;
 
@@ -114,7 +116,7 @@ begin
 
   return jsonb_build_object(
     'ok', true,
-    'capabilityId', r.capability_id::text,
+    'capabilityId', r.capability_id,
     'implementationId', r.implementation_id,
     'source', r.source,
     'version', r.version,
@@ -165,7 +167,7 @@ begin
 end;
 $$;
 
-revoke all on function public.os2_handoff_read_capability_binding_v01(uuid,bigint) from public, anon, authenticated;
+revoke all on function public.os2_handoff_read_capability_binding_v01(text,bigint) from public, anon, authenticated;
 revoke all on function public.os2_handoff_read_action_evidence_requirement_v01(text,bigint) from public, anon, authenticated;
-grant execute on function public.os2_handoff_read_capability_binding_v01(uuid,bigint) to service_role;
+grant execute on function public.os2_handoff_read_capability_binding_v01(text,bigint) to service_role;
 grant execute on function public.os2_handoff_read_action_evidence_requirement_v01(text,bigint) to service_role;
