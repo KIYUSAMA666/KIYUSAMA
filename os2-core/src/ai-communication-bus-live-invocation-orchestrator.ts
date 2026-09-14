@@ -61,8 +61,8 @@ export type LiveBusInvocationDecision =
         | "DELIVERY"
         | "PERSISTENCE"
         | "WAKE_RECOVERY"
-        | "WAKE_ENQUEUE"
         | "SIDE_EFFECT_FENCE"
+        | "WAKE_ENQUEUE"
         | "WAKE_EXECUTION";
       reason: string;
     };
@@ -109,6 +109,20 @@ function confirmedReplayDecision(
   };
 }
 
+function exactWakeEnqueueFence(
+  fence: { permit: VerifiedSideEffectPermit; intent: SideEffectIntent; dispatchNow: string },
+  delivery: BusDeliveryRecord,
+): boolean {
+  return (
+    isVerifiedSideEffectPermit(fence.permit, fence.intent, fence.dispatchNow) &&
+    fence.intent.effectClass === "EXTERNAL_MUTATION" &&
+    fence.intent.target === `managed-wake-enqueue:${delivery.message.messageId}` &&
+    fence.intent.operation === "enqueueManagedWake" &&
+    fence.intent.sourceStateId === delivery.message.current.stateId &&
+    fence.intent.sourceStateRevision === delivery.message.current.stateRevision
+  );
+}
+
 export async function runLiveBusInvocation(input: {
   message: BusMessage;
   expectedSlackChannelId: string;
@@ -116,6 +130,11 @@ export async function runLiveBusInvocation(input: {
   slackObservedAt: string;
   wakeEnqueueObservedAt: string;
   wakeExecutionObservedAt: string;
+  wakeEnqueueFence: {
+    permit: VerifiedSideEffectPermit;
+    intent: SideEffectIntent;
+    dispatchNow: string;
+  };
   wakeExecutionFence: {
     permit: VerifiedSideEffectPermit;
     intent: SideEffectIntent;
@@ -183,6 +202,10 @@ export async function runLiveBusInvocation(input: {
       );
     }
     return { status: "HOLD", stage: "WAKE_RECOVERY", reason: "EXISTING_WAKE_REQUIRES_RECOVERY" };
+  }
+
+  if (!exactWakeEnqueueFence(input.wakeEnqueueFence, delivered.value)) {
+    return { status: "HOLD", stage: "SIDE_EFFECT_FENCE", reason: "WAKE_ENQUEUE_PERMIT_INVALID" };
   }
 
   const enqueueReceipt = await input.ports.enqueueManagedWake(delivered.value);
