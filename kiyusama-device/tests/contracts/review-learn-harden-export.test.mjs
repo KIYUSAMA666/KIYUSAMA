@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{validateHardeningRecord}from'../../dist/contracts/index.js';test('review learn harden loop is exported',()=>assert.equal(typeof validateHardeningRecord,'function'));

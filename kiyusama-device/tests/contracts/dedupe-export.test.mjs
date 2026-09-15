@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{canAcceptClaim}from'../../dist/contracts/index.js';test('dedupe guard is exported',()=>assert.equal(typeof canAcceptClaim,'function'));

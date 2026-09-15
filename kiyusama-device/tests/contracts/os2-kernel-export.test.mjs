@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{executeOs2Kernel}from'../../dist/contracts/index.js';test('OS2 executable kernel is exported',()=>assert.equal(typeof executeOs2Kernel,'function'));

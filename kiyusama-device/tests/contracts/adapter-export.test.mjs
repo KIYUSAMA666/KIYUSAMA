@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{codexTaskBridgeExecutor}from'../../dist/contracts/index.js';test('Codex bridge adapter is exported',()=>assert.equal(typeof codexTaskBridgeExecutor,'function'));

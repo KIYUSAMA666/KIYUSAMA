@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{sameCorrelation}from'../../dist/contracts/correlation.js';test('same correlation passes',()=>assert.equal(sameCorrelation('c1','c1','c1'),true));test('cross-wired correlation fails',()=>assert.equal(sameCorrelation('c1','c2'),false));

@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{validateAbsenceCheck}from'../../dist/contracts/index.js';test('absence check is exported',()=>assert.equal(typeof validateAbsenceCheck,'function'));

@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{continueMemory}from'../../dist/contracts/index.js';test('causal memory engine is exported',()=>assert.equal(typeof continueMemory,'function'));

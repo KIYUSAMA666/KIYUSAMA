@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{evaluateOs2Completion}from'../../dist/contracts/index.js';test('OS2 completion gate is exported',()=>assert.equal(typeof evaluateOs2Completion,'function'));

@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{validateEvidenceEntry}from'../../dist/contracts/index.js';test('evidence ledger is exported',()=>assert.equal(typeof validateEvidenceEntry,'function'));

@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{loopGuard}from'../../dist/contracts/index.js';test('loop guard is exported',()=>assert.equal(typeof loopGuard,'function'));

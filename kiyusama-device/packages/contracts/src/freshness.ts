@@ -1,0 +1,1 @@
+export function isFresh(freshnessAt:string,now:string,maxAgeMs:number){const f=Date.parse(freshnessAt),n=Date.parse(now);return Number.isFinite(f)&&Number.isFinite(n)&&maxAgeMs>=0&&n>=f&&n-f<=maxAgeMs}
