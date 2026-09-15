@@ -1,14 +1,14 @@
 import type { CurrentStateSnapshot } from "./current-state.js";
 import type {
-  ActionAuthorityClaim,
-  ActionAuthorityRequirement,
+  ActionRoleAuthorityClaim,
+  ActionRoleAuthorityRequirement,
 } from "./action-role-authority.js";
 
 export type BusCurrentAuthorityBindingDecision =
   | {
       status: "BOUND";
-      authorityRequirement: ActionAuthorityRequirement;
-      authorityClaim: ActionAuthorityClaim;
+      authorityRequirement: ActionRoleAuthorityRequirement;
+      authorityClaim: ActionRoleAuthorityClaim;
     }
   | {
       status: "HOLD";
