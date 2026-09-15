@@ -8,28 +8,22 @@ export interface ExecutionSideEffectRpcClientLike {
 }
 
 export interface ExecutionSideEffectMarkInput {
-  dispatchId: string;
+  taskId: string;
   executionId: string;
-  workerId: string;
-  workerEpoch: number;
   authorityToken: string;
-  sideEffectStatus: ExecutionSideEffectStatus;
+  status: ExecutionSideEffectStatus;
   result: Readonly<Record<string, unknown>>;
   evidence: Readonly<Record<string, unknown>>;
 }
 
 export type ExecutionSideEffectMarkDecision =
-  | { status: "RECORDED"; data: unknown }
+  | { status: "RECORDED" }
   | { status: "HOLD"; reason: "INVALID_INPUT" | "RPC_ERROR" };
 
 const MARK_SIDE_EFFECT_RPC = "execution_gate_mark_side_effect_v0";
 
 function nonEmpty(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
-}
-
-function positiveInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
 function validStatus(value: unknown): value is ExecutionSideEffectStatus {
@@ -43,21 +37,20 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 /**
  * Thin adapter for the existing execution_v0 side-effect recorder.
  *
- * This module intentionally adds no BUS-specific state machine and no new
- * authority semantics. It only preserves the existing execution_v0 RPC
- * vocabulary so composition code does not duplicate raw rpc() calls.
+ * The parameter names intentionally mirror the production RPC exactly:
+ * p_task_id, p_execution_id, p_authority_token, p_status, p_result, p_evidence.
+ * The RPC returns void; successful completion is represented only as RECORDED.
+ * No BUS-specific state machine or authority semantics are introduced here.
  */
 export async function markExecutionSideEffect(
   client: ExecutionSideEffectRpcClientLike,
   input: ExecutionSideEffectMarkInput,
 ): Promise<ExecutionSideEffectMarkDecision> {
   if (
-    !nonEmpty(input.dispatchId) ||
+    !nonEmpty(input.taskId) ||
     !nonEmpty(input.executionId) ||
-    !nonEmpty(input.workerId) ||
-    !positiveInteger(input.workerEpoch) ||
     !nonEmpty(input.authorityToken) ||
-    !validStatus(input.sideEffectStatus) ||
+    !validStatus(input.status) ||
     !isRecord(input.result) ||
     !isRecord(input.evidence)
   ) {
@@ -65,19 +58,17 @@ export async function markExecutionSideEffect(
   }
 
   try {
-    const { data, error } = await client.rpc(MARK_SIDE_EFFECT_RPC, {
-      p_dispatch_id: input.dispatchId,
+    const { error } = await client.rpc(MARK_SIDE_EFFECT_RPC, {
+      p_task_id: input.taskId,
       p_execution_id: input.executionId,
-      p_worker_id: input.workerId,
-      p_worker_epoch: input.workerEpoch,
       p_authority_token: input.authorityToken,
-      p_side_effect_status: input.sideEffectStatus,
+      p_status: input.status,
       p_result: input.result,
       p_evidence: input.evidence,
     });
 
     if (error !== null) return { status: "HOLD", reason: "RPC_ERROR" };
-    return { status: "RECORDED", data };
+    return { status: "RECORDED" };
   } catch {
     return { status: "HOLD", reason: "RPC_ERROR" };
   }
