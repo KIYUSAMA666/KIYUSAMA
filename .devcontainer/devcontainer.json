@@ -1,4 +1,4 @@
 {
   "name": "KIYUSAMA REMEMBER WORLD TEST",
-  "postCreateCommand": "bash tonton-remember-world-test/precheck.sh | tee /tmp/kiyusama-remember-precheck.txt"
+  "postCreateCommand": "bash tonton-remember-world-test/precheck.sh | tee tonton-remember-world-test/PRECHECK_RESULT.txt"
 }
