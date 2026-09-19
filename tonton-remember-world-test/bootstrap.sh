@@ -17,8 +17,11 @@ fi
 
 export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 
+bash tonton-remember-world-test/setup-mcp-memory.sh
+
 echo "claude: $(command -v claude || echo MISSING)"
 echo "claude-version: $(claude --version 2>/dev/null || echo UNAVAILABLE)"
 echo "codex: $(command -v codex || echo MISSING)"
 echo "codex-version: $(codex --version 2>/dev/null || echo UNAVAILABLE)"
+echo "mcp-memory: $(command -v mcp-memory || echo MISSING)"
 echo "=== BOOTSTRAP END ==="
