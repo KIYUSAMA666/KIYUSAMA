@@ -7,8 +7,10 @@ on:
     paths:
       - 'external_body_adapter.py'
       - 'external_body_transport.py'
+      - 'external_body_capture_checkpoint.py'
       - 'tests/test_external_body_adapter.py'
       - 'tests/test_external_body_transport.py'
+      - 'tests/test_external_body_capture_checkpoint.py'
       - '.github/workflows/external-body-adapter-ci.yml'
   workflow_dispatch:
 
@@ -24,5 +26,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run external body adapter and transport guard tests
-        run: python -m unittest tests.test_external_body_adapter tests.test_external_body_transport -v
+      - name: Run external body adapter transport and durable capture tests
+        run: python -m unittest tests.test_external_body_adapter tests.test_external_body_transport tests.test_external_body_capture_checkpoint -v
