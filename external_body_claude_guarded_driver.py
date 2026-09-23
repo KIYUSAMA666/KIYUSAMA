@@ -22,7 +22,7 @@ class ClaudeBrowserSurface(Protocol):
 
 class ClaudeGuardedDriver:
     def __init__(self,binding:Binding,lease:BodyWriteLease,holder_id:str,surface:ClaudeBrowserSurface):
-        self.binding=binding; self.lease=lease; self.holder_id=holder_id; self.surface=surface
+        self.binding=binding; self.lease=lease; self.holder_id=holder_id; self.surface=surface; self._marker=None
     def _guard(self):
         url,logged,composer=self.surface.page_state()
         validate_claude_page(self.binding,current_url=url,logged_in=logged,composer_visible=composer)
@@ -37,10 +37,13 @@ class ClaudeGuardedDriver:
         self._guard(); self.surface.compose_exact(payload,payload_digest)
     def click_send_once(self,binding):
         if binding!=self.binding: raise GuardViolation("Claude driver binding changed")
-        self._guard(); return self.surface.send_once_evidence(self._marker)
+        self._guard()
+        if not self._marker: raise GuardViolation("operation marker not bound")
+        return self.surface.send_once_evidence(self._marker)
     def observe_response_read_only(self,binding,marker):
         if binding!=self.binding: raise GuardViolation("Claude driver binding changed")
-        self._guard(); return self.surface.response_evidence(marker)
+        self._guard()
+        return self.surface.response_evidence(marker)
     def send_operation(self,op:Operation,payload:str):
         self._marker=op.marker
         return send_once(op,payload,self)
