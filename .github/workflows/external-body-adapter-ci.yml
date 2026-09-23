@@ -1,0 +1,26 @@
+name: external-body-adapter-ci
+
+on:
+  push:
+    branches:
+      - sora/external-body-adapter-20260923
+    paths:
+      - 'external_body_adapter.py'
+      - 'tests/test_external_body_adapter.py'
+      - '.github/workflows/external-body-adapter-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run external body adapter guard tests
+        run: python -m unittest tests.test_external_body_adapter -v
