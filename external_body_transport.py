@@ -14,6 +14,10 @@ class BrowserObservation:
 @dataclass(frozen=True)
 class SendEvidence:
     confirmed: bool
+    canonical_url: str | None = None
+    marker_count: int | None = None
+    user_marker_count: int | None = None
+    draft_marker_count: int | None = None
 
 @dataclass(frozen=True)
 class ResponseObservation:
@@ -28,6 +32,15 @@ class BrowserDriver(Protocol):
     def click_send_once(self, binding: Binding) -> SendEvidence: ...
     def observe_response_read_only(self, binding: Binding, marker: str) -> ResponseObservation: ...
 
+def _send_is_exact(op: Operation, evidence: SendEvidence) -> bool:
+    return (
+        evidence.confirmed
+        and evidence.canonical_url == op.binding.canonical_url
+        and evidence.marker_count == 1
+        and evidence.user_marker_count == 1
+        and evidence.draft_marker_count == 0
+    )
+
 def send_once(op: Operation, payload: str, driver: BrowserDriver) -> Operation:
     obs = driver.observe(op.binding)
     if not obs.authenticated:
@@ -37,7 +50,7 @@ def send_once(op: Operation, payload: str, driver: BrowserDriver) -> Operation:
     verify_before_send(op, canonical_url=obs.canonical_url, observed_head=obs.head_fingerprint, lease_revision=obs.lease_revision)
     driver.compose_and_verify(op.binding, payload, op.payload_digest)
     evidence = driver.click_send_once(op.binding)
-    return confirm_send(op) if evidence.confirmed else mark_ambiguous_send(op)
+    return confirm_send(op) if _send_is_exact(op, evidence) else mark_ambiguous_send(op)
 
 def capture_read_only(op: Operation, driver: BrowserDriver) -> Operation:
     if op.state not in (State.SEND_CONFIRMED, State.RECONCILE):
