@@ -31,7 +31,7 @@ class DriverTests(unittest.TestCase):
         self.assertEqual(self.s.sent,0)
     def test_logged_out_never_sends(self):
         self.s.logged=False
-        sent=self.driver().send_operation(self.op,"work OP-1")
-        self.assertEqual(sent.state,State.HUMAN_REQUIRED);self.assertEqual(self.s.sent,0)
+        with self.assertRaises(GuardViolation): self.driver().send_operation(self.op,"work OP-1")
+        self.assertEqual(self.s.sent,0)
 
 if __name__=="__main__": unittest.main()
