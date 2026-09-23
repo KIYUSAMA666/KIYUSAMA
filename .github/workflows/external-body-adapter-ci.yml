@@ -12,6 +12,7 @@ on:
       - 'external_body_claude_provider.py'
       - 'external_body_claude_capture.py'
       - 'external_body_session_lease.py'
+      - 'external_body_claude_guarded_driver.py'
       - 'tests/test_external_body_adapter.py'
       - 'tests/test_external_body_transport.py'
       - 'tests/test_external_body_capture_checkpoint.py'
@@ -19,6 +20,7 @@ on:
       - 'tests/test_external_body_claude_provider.py'
       - 'tests/test_external_body_claude_capture.py'
       - 'tests/test_external_body_session_lease.py'
+      - 'tests/test_external_body_claude_guarded_driver.py'
       - '.github/workflows/external-body-adapter-ci.yml'
   workflow_dispatch:
 
@@ -35,4 +37,4 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run external body adapter transport and durable capture tests
-        run: python -m unittest tests.test_external_body_adapter tests.test_external_body_transport tests.test_external_body_capture_checkpoint tests.test_external_body_writeback_binding tests.test_external_body_claude_provider tests.test_external_body_claude_capture tests.test_external_body_session_lease -v
+        run: python -m unittest tests.test_external_body_adapter tests.test_external_body_transport tests.test_external_body_capture_checkpoint tests.test_external_body_writeback_binding tests.test_external_body_claude_provider tests.test_external_body_claude_capture tests.test_external_body_session_lease tests.test_external_body_claude_guarded_driver -v
