@@ -25,6 +25,14 @@ class ResponseObservation:
     new_head: str
     marker_observed: bool
     stable: bool
+    canonical_url: str | None = None
+    committed_count: int | None = None
+    prompt_role: str | None = None
+    response_role: str | None = None
+    prompt_marker_count: int | None = None
+    rendered_marker_count: int | None = None
+    prompt_message_id: str | None = None
+    response_message_id: str | None = None
 
 class BrowserDriver(Protocol):
     def observe(self, binding: Binding) -> BrowserObservation: ...
@@ -39,6 +47,20 @@ def _send_is_exact(op: Operation, evidence: SendEvidence) -> bool:
         and evidence.marker_count == 1
         and evidence.user_marker_count == 1
         and evidence.draft_marker_count == 0
+    )
+
+def _response_is_exact(op: Operation, r: ResponseObservation) -> bool:
+    return (
+        r.stable
+        and r.canonical_url == op.binding.canonical_url
+        and r.committed_count == 2
+        and r.prompt_role == "user"
+        and r.response_role == "assistant"
+        and r.prompt_marker_count == 1
+        and r.rendered_marker_count == 1
+        and bool(r.prompt_message_id)
+        and bool(r.response_message_id)
+        and r.prompt_message_id != r.response_message_id
     )
 
 def send_once(op: Operation, payload: str, driver: BrowserDriver) -> Operation:
@@ -58,4 +80,6 @@ def capture_read_only(op: Operation, driver: BrowserDriver) -> Operation:
     r = driver.observe_response_read_only(op.binding, op.marker)
     if not r.stable:
         return op
+    if not _response_is_exact(op, r):
+        raise GuardViolation("response attribution mismatch")
     return capture_response(op, prior_head=r.prior_head, new_head=r.new_head, marker_observed=r.marker_observed)
