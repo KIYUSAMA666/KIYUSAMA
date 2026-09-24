@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from kira_audit_lane import (
     GATE_SQL,
@@ -43,6 +44,19 @@ class ProductionContractGate:
 
 
 class LaneTests(unittest.TestCase):
+    def _code_lane(self, gate=None, verify=lambda *_: "MANAGED_WAKE"):
+        gate = gate or ProductionContractGate()
+        tasks = {}
+
+        def enqueue(subject_key, content, source_ref):
+            tasks.setdefault(
+                subject_key,
+                {"content": content, "source_ref": source_ref},
+            )
+            return tasks[subject_key]
+
+        return KiraCommonMemoryLane(gate, verify, lambda *_: None, enqueue), gate, tasks
+
     def test_verified_wake_then_gate_then_read_with_server_constants(self):
         events = []
         gate = ProductionContractGate()
@@ -102,6 +116,62 @@ class LaneTests(unittest.TestCase):
             (decision.decision, decision.route, decision.reason),
             ("DENY", "NONE", "UNAUTHORIZED_ACTOR"),
         )
+
+    def test_unverified_wake_cannot_dispatch(self):
+        lane, gate, tasks = self._code_lane(verify=lambda *_: "UNVERIFIED")
+        with self.assertRaises(PermissionDenied):
+            lane.route_code_request("m1", "claim", "edit repository")
+        self.assertEqual(gate.calls, [])
+        self.assertEqual(tasks, {})
+
+    def test_wrong_route_cannot_dispatch(self):
+        gate = ProductionContractGate()
+
+        def wrong_route(*args):
+            decision = ProductionContractGate().evaluate(*args)
+            return type(decision)(False, decision.decision_id, "ROUTE", "HUMAN", "HUMAN")
+
+        gate.evaluate = wrong_route
+        lane, _, tasks = self._code_lane(gate=gate)
+        with self.assertRaises(PermissionDenied):
+            lane.route_code_request("m1", "claim", "edit repository")
+        self.assertEqual(tasks, {})
+
+    def test_exact_route_enqueues_at_most_one_existing_lane_task(self):
+        lane, gate, tasks = self._code_lane()
+        first = lane.route_code_request("m1", "claim", "edit repository")
+        second = lane.route_code_request("m1", "claim", "edit repository")
+        self.assertIs(first, second)
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(
+            tasks["codex.k.task.m1"],
+            {
+                "content": "edit repository",
+                "source_ref": f"kira.permission_gate.decision.{gate.next_id}",
+            },
+        )
+        self.assertEqual(
+            gate.calls,
+            [
+                ("m1", "KIRA_MANAGED", "MANAGED_WAKE", "CODE_EDIT", "REPOSITORY"),
+                ("m1", "KIRA_MANAGED", "MANAGED_WAKE", "CODE_EDIT", "REPOSITORY"),
+            ],
+        )
+
+    def test_route_has_no_local_code_executor_and_output_stays_pr_gated(self):
+        lane, _, tasks = self._code_lane()
+        lane.route_code_request("m1", "claim", "do not run locally")
+        self.assertFalse(hasattr(lane, "execute_code"))
+        self.assertEqual(tasks["codex.k.task.m1"]["content"], "do not run locally")
+        workflow = (
+            Path(__file__).parents[1]
+            / ".github"
+            / "workflows"
+            / "codex-k-task-runner.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('git checkout -b "$BRANCH"', workflow)
+        self.assertIn("/k-branch-ready", workflow)
+        self.assertNotIn("git push origin main", workflow)
 
 
 class Cursor:

@@ -1,8 +1,9 @@
-"""KIRA's gated, read-only COMMON MEMORY audit lane.
+"""KIRA's gated COMMON MEMORY audit lane.
 
 This module deliberately owns no credentials and performs no wake claiming.  The
-caller must inject the existing durable Managed Wake verifier and a read-only
-COMMON MEMORY reader.
+caller must inject the existing durable Managed Wake verifier, a read-only
+COMMON MEMORY reader, and (when code routing is enabled) the existing CODEX-K
+COMMON MEMORY task enqueue operation.
 """
 
 from dataclasses import dataclass
@@ -102,7 +103,7 @@ class PostgresPermissionGate:
 
 
 class KiraCommonMemoryLane:
-    """One local read tool plus gate-only security audit probes."""
+    """One local read tool plus a narrowly gated CODEX-K task handoff."""
 
     _ACTOR = "KIRA_MANAGED"
 
@@ -111,10 +112,12 @@ class KiraCommonMemoryLane:
         gate: PostgresPermissionGate,
         verify_managed_wake: Callable[[Any, Any], str],
         common_memory_reader: Callable[[Any], Any],
+        enqueue_codex_k_task: Callable[[str, str, str], Any] | None = None,
     ):
         self._gate = gate
         self._verify_managed_wake = verify_managed_wake
         self._common_memory_reader = common_memory_reader
+        self._enqueue_codex_k_task = enqueue_codex_k_task
 
     def read_common_memory(self, message_id: Any, wake_claim: Any) -> Any:
         """The lane's sole locally executable tool."""
@@ -154,3 +157,46 @@ class KiraCommonMemoryLane:
             target_class,
         )
 
+    def route_code_request(
+        self, message_id: Any, wake_claim: Any, code_request: str
+    ) -> Any:
+        """Enqueue one existing-lane CODEX-K task; never execute code locally.
+
+        The existing COMMON MEMORY contract makes ``subject_key`` plus version
+        the durable idempotency boundary.  The injected operation owns that
+        established insert/conflict behavior and supplies the contract's fixed
+        TASK metadata; this lane supplies only its evidenced variable fields.
+        """
+        scope = self._verify_managed_wake(message_id, wake_claim)
+        if scope != "MANAGED_WAKE":
+            raise PermissionDenied(
+                "Managed Wake verification did not grant code routing"
+            )
+        if type(code_request) is not str or not code_request.strip():
+            raise PermissionDenied("code request must be non-empty text")
+
+        decision = self._gate.evaluate(
+            message_id,
+            self._ACTOR,
+            scope,
+            "CODE_EDIT",
+            "REPOSITORY",
+        )
+        if decision != GateDecision(
+            ok=False,
+            decision_id=decision.decision_id,
+            decision="ROUTE",
+            route="CODEX_K_PR_REQUIRED",
+            reason="CODEX_K_PR_REQUIRED",
+        ):
+            raise PermissionDenied("code request was not routed to CODEX-K")
+        if self._enqueue_codex_k_task is None:
+            raise PermissionDenied(
+                "existing CODEX-K task enqueue operation is unavailable"
+            )
+
+        # Both values use existing immutable knowledge_entries fields.  The
+        # runner's result records already bind back through knowledge_entry_id.
+        subject_key = f"codex.k.task.{message_id}"
+        source_ref = f"kira.permission_gate.decision.{decision.decision_id}"
+        return self._enqueue_codex_k_task(subject_key, code_request, source_ref)
