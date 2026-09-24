@@ -1,172 +1,44 @@
-export const RESULT_STATUSES = [
-  'SUCCESS',
-  'FAILED',
-  'TIMEOUT',
-  'QUOTA_EXCEEDED',
-] as const;
+export * from './memory-continuation.js';
+export * from './memory-engine.js';
+export * from './lifecycle-memory.js';
+export * from './artifact-lineage.js';
+export * from './artifact-memory.js';
+export * from './recovery-gate.js';
+export * from './context-pack.js';
+export * from './freshness.js';
+export * from './authenticity.js';
+export * from './signal-bus.js';
+export * from './correlation.js';
+export * from './loop-guard.js';
+export * from './core-interface.js';
+export * from './authority.js';
+export * from './root-of-trust.js';
+export * from './intent-impact.js';
+export * from './worker-fabric.js';
+export * from './execution-budget.js';
+export * from './counter-lane.js';
+export * from './independent-recount.js';
+export * from './verification-depth.js';
+export * from './no-new-evidence.js';
+export * from './absence-check.js';
+export * from './tonton-boundary.js';
+export * from './mailbox.js';
+export * from './runtime-chain.js';
+export * from './runtime-orchestrator.js';
+export * from './runtime-adapter.js';
+export * from './side-effect-fence.js';
+export * from './runtime-controller.js';
+export * from './runtime-state.js';
+export * from './evidence-ledger.js';
+export * from './dedupe.js';
+export * from './sensory-adapter.js';
+export * from './failure-containment.js';
+export * from './review-learn-harden.js';
+export * from './kernel-health.js';
+export * from './boot.js';
+export * from './completion-gate.js';
+export * from './os2-kernel.js';
+export * from './commerce-boundary.js';
 
-export type ResultStatus = (typeof RESULT_STATUSES)[number];
-
-export const OUTPUT_FORMATS = ['text', 'json', 'markdown'] as const;
-export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
-
-export interface ProviderExecutionRef {
-  session_id?: string;
-  deployment_run_id?: string;
-  run_id?: string;
-  [key: string]: unknown;
-}
-
-export interface UniversalResultContainer {
-  schema_version: 'device-result/0.1';
-  /** Root trace ID across all hops. Immutable for the lifetime of the job. */
-  device_event_id: string;
-  /** Unique ID for this specific return delivery. Dedupe target. */
-  delivery_event_id: string;
-  /** Positive integer hop sequence: 1, 2, 3, ... */
-  hop: number;
-  provider: string;
-  provider_execution: ProviderExecutionRef;
-  status: ResultStatus;
-  output: {
-    format: OutputFormat;
-    text: string;
-    structured: Record<string, unknown> | null;
-  };
-  metrics: {
-    duration_ms: number;
-    turns_count?: number;
-  };
-  error: {
-    code: string;
-    message: string;
-  } | null;
-  /** RFC3339 timestamp. */
-  completed_at: string;
-}
-
-export interface ValidationIssue {
-  path: string;
-  message: string;
-}
-
-export type ValidationResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; issues: ValidationIssue[] };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const isNonEmptyString = (value: unknown): value is string =>
-  typeof value === 'string' && value.trim().length > 0;
-
-const isFiniteNonNegativeNumber = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0;
-
-const isPositiveInteger = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isInteger(value) && value >= 1;
-
-const isRfc3339 = (value: unknown): value is string => {
-  if (typeof value !== 'string') return false;
-  const rfc3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-  return rfc3339.test(value) && !Number.isNaN(Date.parse(value));
-};
-
-export function validateUniversalResultContainer(
-  input: unknown,
-): ValidationResult<UniversalResultContainer> {
-  const issues: ValidationIssue[] = [];
-
-  if (!isRecord(input)) {
-    return { ok: false, issues: [{ path: '$', message: 'must be an object' }] };
-  }
-
-  if (input.schema_version !== 'device-result/0.1') {
-    issues.push({ path: 'schema_version', message: 'must equal device-result/0.1' });
-  }
-  if (!isNonEmptyString(input.device_event_id)) {
-    issues.push({ path: 'device_event_id', message: 'must be a non-empty string' });
-  }
-  if (!isNonEmptyString(input.delivery_event_id)) {
-    issues.push({ path: 'delivery_event_id', message: 'must be a non-empty string' });
-  }
-  if (!isPositiveInteger(input.hop)) {
-    issues.push({ path: 'hop', message: 'must be a positive integer' });
-  }
-  if (!isNonEmptyString(input.provider)) {
-    issues.push({ path: 'provider', message: 'must be a non-empty string' });
-  }
-  if (!isRecord(input.provider_execution)) {
-    issues.push({ path: 'provider_execution', message: 'must be an object' });
-  }
-  if (!RESULT_STATUSES.includes(input.status as ResultStatus)) {
-    issues.push({ path: 'status', message: `must be one of: ${RESULT_STATUSES.join(', ')}` });
-  }
-
-  if (!isRecord(input.output)) {
-    issues.push({ path: 'output', message: 'must be an object' });
-  } else {
-    if (!OUTPUT_FORMATS.includes(input.output.format as OutputFormat)) {
-      issues.push({ path: 'output.format', message: `must be one of: ${OUTPUT_FORMATS.join(', ')}` });
-    }
-    if (typeof input.output.text !== 'string') {
-      issues.push({ path: 'output.text', message: 'must be a string' });
-    }
-    if (!(input.output.structured === null || isRecord(input.output.structured))) {
-      issues.push({ path: 'output.structured', message: 'must be an object or null' });
-    }
-  }
-
-  if (!isRecord(input.metrics)) {
-    issues.push({ path: 'metrics', message: 'must be an object' });
-  } else {
-    if (!isFiniteNonNegativeNumber(input.metrics.duration_ms)) {
-      issues.push({ path: 'metrics.duration_ms', message: 'must be a finite number >= 0' });
-    }
-    if (
-      input.metrics.turns_count !== undefined &&
-      !(typeof input.metrics.turns_count === 'number' &&
-        Number.isInteger(input.metrics.turns_count) &&
-        input.metrics.turns_count >= 0)
-    ) {
-      issues.push({ path: 'metrics.turns_count', message: 'must be an integer >= 0 when present' });
-    }
-  }
-
-  if (input.error !== null) {
-    if (!isRecord(input.error)) {
-      issues.push({ path: 'error', message: 'must be an object or null' });
-    } else {
-      if (!isNonEmptyString(input.error.code)) {
-        issues.push({ path: 'error.code', message: 'must be a non-empty string' });
-      }
-      if (!isNonEmptyString(input.error.message)) {
-        issues.push({ path: 'error.message', message: 'must be a non-empty string' });
-      }
-    }
-  }
-
-  if (!isRfc3339(input.completed_at)) {
-    issues.push({ path: 'completed_at', message: 'must be a valid RFC3339 timestamp with timezone' });
-  }
-
-  if (input.status === 'SUCCESS' && input.error !== null) {
-    issues.push({ path: 'error', message: 'must be null when status is SUCCESS' });
-  }
-  if (
-    RESULT_STATUSES.includes(input.status as ResultStatus) &&
-    input.status !== 'SUCCESS' &&
-    input.error === null
-  ) {
-    issues.push({ path: 'error', message: 'must be present when status is not SUCCESS' });
-  }
-
-  if (issues.length > 0) return { ok: false, issues };
-  return { ok: true, value: input as unknown as UniversalResultContainer };
-}
-
-export function isValidUniversalResultContainer(
-  input: unknown,
-): input is UniversalResultContainer {
-  return validateUniversalResultContainer(input).ok;
-}
+export const RESULT_STATUSES=['SUCCESS','FAILED','TIMEOUT','QUOTA_EXCEEDED']as const;export type ResultStatus=(typeof RESULT_STATUSES)[number];export const OUTPUT_FORMATS=['text','json','markdown']as const;export type OutputFormat=(typeof OUTPUT_FORMATS)[number];export interface ProviderExecutionRef{session_id?:string;deployment_run_id?:string;run_id?:string;[key:string]:unknown}export interface UniversalResultContainer{schema_version:'device-result/0.1';device_event_id:string;delivery_event_id:string;hop:number;provider:string;provider_execution:ProviderExecutionRef;status:ResultStatus;output:{format:OutputFormat;text:string;structured:Record<string,unknown>|null};metrics:{duration_ms:number;turns_count?:number};error:{code:string;message:string}|null;completed_at:string}export interface ValidationIssue{path:string;message:string}export type ValidationResult<T>={ok:true;value:T}|{ok:false;issues:ValidationIssue[]};const R=(v:unknown):v is Record<string,unknown>=>typeof v==='object'&&v!==null&&!Array.isArray(v),S=(v:unknown):v is string=>typeof v==='string'&&v.trim().length>0,N=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>=0,P=(v:unknown):v is number=>typeof v==='number'&&Number.isInteger(v)&&v>=1,T=(v:unknown):v is string=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(v)&&!Number.isNaN(Date.parse(v));export function validateUniversalResultContainer(x:unknown):ValidationResult<UniversalResultContainer>{const i:ValidationIssue[]=[];if(!R(x))return{ok:false,issues:[{path:'$',message:'must be object'}]};if(x.schema_version!=='device-result/0.1')i.push({path:'schema_version',message:'invalid'});if(!S(x.device_event_id))i.push({path:'device_event_id',message:'required'});if(!S(x.delivery_event_id))i.push({path:'delivery_event_id',message:'required'});if(!P(x.hop))i.push({path:'hop',message:'invalid'});if(!S(x.provider))i.push({path:'provider',message:'required'});if(!R(x.provider_execution))i.push({path:'provider_execution',message:'required'});if(!RESULT_STATUSES.includes(x.status as ResultStatus))i.push({path:'status',message:'invalid'});if(!R(x.output))i.push({path:'output',message:'required'});else{if(!OUTPUT_FORMATS.includes(x.output.format as OutputFormat))i.push({path:'output.format',message:'invalid'});if(typeof x.output.text!=='string')i.push({path:'output.text',message:'invalid'});if(!(x.output.structured===null||R(x.output.structured)))i.push({path:'output.structured',message:'invalid'})}if(!R(x.metrics))i.push({path:'metrics',message:'required'});else{if(!N(x.metrics.duration_ms))i.push({path:'metrics.duration_ms',message:'invalid'});if(x.metrics.turns_count!==undefined&&!(typeof x.metrics.turns_count==='number'&&Number.isInteger(x.metrics.turns_count)&&x.metrics.turns_count>=0))i.push({path:'metrics.turns_count',message:'invalid'})}if(x.error!==null){if(!R(x.error))i.push({path:'error',message:'invalid'});else if(!S(x.error.code)||!S(x.error.message))i.push({path:'error',message:'code/message required'})}if(!T(x.completed_at))i.push({path:'completed_at',message:'invalid'});if(x.status==='SUCCESS'&&x.error!==null)i.push({path:'error',message:'must be null'});if(RESULT_STATUSES.includes(x.status as ResultStatus)&&x.status!=='SUCCESS'&&x.error===null)i.push({path:'error',message:'required'});return i.length?{ok:false,issues:i}:{ok:true,value:x as unknown as UniversalResultContainer}}export function isValidUniversalResultContainer(x:unknown):x is UniversalResultContainer{return validateUniversalResultContainer(x).ok}
+/** Legacy seven-stage vocabulary: compatibility/evidence only, never final OS 2.0 topology. */export const LEGACY_TONTON_STAGES=['WATCH','WAKE','ROUTE','DELIVER','ACK','VERIFY','RECORD']as const;export type LegacyTontonStage=(typeof LEGACY_TONTON_STAGES)[number];export const LEGACY_TONTON_STAGE_STATUSES=['PENDING','STARTED','SUCCESS','FAILED','SKIPPED_COMPAT','BLOCKED']as const;export type LegacyTontonStageStatus=(typeof LEGACY_TONTON_STAGE_STATUSES)[number];export interface LegacyTontonStageRecord{schema_version:'tonton-stage/legacy-7stage-v1';flow_id:string;event_id:string;stage:LegacyTontonStage;actor:string;target:string;previous_stage:LegacyTontonStage|null;status:LegacyTontonStageStatus;evidence_ref:string|null;created_at:string;next_stage:LegacyTontonStage|null;failure_reason:string|null;legacy_ref?:string;metadata?:Record<string,unknown>}const I=(s:LegacyTontonStage)=>LEGACY_TONTON_STAGES.indexOf(s);export function validateLegacyTontonStageRecord(x:unknown):ValidationResult<LegacyTontonStageRecord>{const i:ValidationIssue[]=[];if(!R(x))return{ok:false,issues:[{path:'$',message:'must be object'}]};if(x.schema_version!=='tonton-stage/legacy-7stage-v1')i.push({path:'schema_version',message:'invalid'});for(const k of['flow_id','event_id','actor','target']as const)if(!S(x[k]))i.push({path:k,message:'required'});if(!LEGACY_TONTON_STAGES.includes(x.stage as LegacyTontonStage))i.push({path:'stage',message:'invalid'});if(!(x.previous_stage===null||LEGACY_TONTON_STAGES.includes(x.previous_stage as LegacyTontonStage)))i.push({path:'previous_stage',message:'invalid'});if(!LEGACY_TONTON_STAGE_STATUSES.includes(x.status as LegacyTontonStageStatus))i.push({path:'status',message:'invalid'});if(!(x.evidence_ref===null||S(x.evidence_ref)))i.push({path:'evidence_ref',message:'invalid'});if(!T(x.created_at))i.push({path:'created_at',message:'invalid'});if(!(x.next_stage===null||LEGACY_TONTON_STAGES.includes(x.next_stage as LegacyTontonStage)))i.push({path:'next_stage',message:'invalid'});if(!(x.failure_reason===null||S(x.failure_reason)))i.push({path:'failure_reason',message:'invalid'});const st=LEGACY_TONTON_STAGES.includes(x.stage as LegacyTontonStage)?x.stage as LegacyTontonStage:null,pr=LEGACY_TONTON_STAGES.includes(x.previous_stage as LegacyTontonStage)?x.previous_stage as LegacyTontonStage:null,nx=LEGACY_TONTON_STAGES.includes(x.next_stage as LegacyTontonStage)?x.next_stage as LegacyTontonStage:null;if(st==='WATCH'&&x.previous_stage!==null)i.push({path:'previous_stage',message:'WATCH starts null'});if(st==='RECORD'&&x.next_stage!==null&&x.next_stage!=='WATCH')i.push({path:'next_stage',message:'invalid'});if(st&&pr&&I(pr)>=I(st))i.push({path:'previous_stage',message:'must precede'});if(st&&nx&&st!=='RECORD'&&I(nx)<=I(st))i.push({path:'next_stage',message:'must follow'});if(x.status==='FAILED'&&x.failure_reason===null)i.push({path:'failure_reason',message:'required'});if(x.status==='SUCCESS'&&x.failure_reason!==null)i.push({path:'failure_reason',message:'must be null'});if((st==='VERIFY'||st==='RECORD')&&x.status==='SUCCESS'&&x.evidence_ref===null)i.push({path:'evidence_ref',message:'required'});return i.length?{ok:false,issues:i}:{ok:true,value:x as unknown as LegacyTontonStageRecord}}export function isValidLegacyTontonStageRecord(x:unknown):x is LegacyTontonStageRecord{return validateLegacyTontonStageRecord(x).ok}

@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{isFresh}from'../../dist/contracts/freshness.js';test('fresh evidence accepted',()=>assert.equal(isFresh('2026-09-06T22:00:00+09:00','2026-09-06T22:01:00+09:00',120000),true));test('stale evidence rejected',()=>assert.equal(isFresh('2026-09-06T20:00:00+09:00','2026-09-06T22:01:00+09:00',120000),false));

@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{orchestrateVerifiedChain}from'../../dist/contracts/index.js';test('runtime orchestrator is exported',()=>assert.equal(typeof orchestrateVerifiedChain,'function'));

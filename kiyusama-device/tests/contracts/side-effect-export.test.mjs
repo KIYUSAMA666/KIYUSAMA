@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{sideEffectFence}from'../../dist/contracts/index.js';test('side effect fence is exported',()=>assert.equal(typeof sideEffectFence,'function'));

@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{kernelHealth}from'../../dist/contracts/index.js';test('kernel health evaluator is exported',()=>assert.equal(typeof kernelHealth,'function'));

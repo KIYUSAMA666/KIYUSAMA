@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{sameCorrelation}from'../../dist/contracts/index.js';test('correlation guard is exported',()=>assert.equal(typeof sameCorrelation,'function'));

@@ -1,0 +1,1 @@
+export interface AbsenceCheck{searched_refs:string[];query:string;result_count:number;checked_at:string}export function validateAbsenceCheck(x:AbsenceCheck){return x.query.trim()!==''&&x.searched_refs.length>0&&Number.isInteger(x.result_count)&&x.result_count>=0&&!Number.isNaN(Date.parse(x.checked_at))}
