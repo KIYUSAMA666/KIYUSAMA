@@ -25,6 +25,10 @@ export const TARGET_CONVERSATION_ID =
  * The TARGET/main session must own the background task. Do not delegate this
  * watcher to a subagent: the native completion notification is the wake edge.
  *
+ * Evidence guard: Claude Code issue #88423 measured lead-owned background
+ * completions at 3/3 delivered, while subagent-owned completions were 0/32.
+ * Ownership is therefore a Step-6 invariant, not an implementation preference.
+ *
  * The watcher is finite by design. MATCHED/TIMEOUT both terminate so the
  * runtime can emit exactly the completion notification that re-invokes the
  * owning session.
