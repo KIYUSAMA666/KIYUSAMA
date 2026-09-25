@@ -47,6 +47,12 @@ export const TARGET_CONVERSATION_ID =
  * require equivalent transcript-level materialization + real turn evidence,
  * never list-events/UI-card/mtime alone.
  *
+ * Continuation discriminator from #86012: the fixed path was verified in cold,
+ * queued/mid-turn, and warm states. A queued ACK is therefore not enough: when
+ * TARGET is busy, require the deferred send to drain, then transcript
+ * materialization and a real responding turn. This closes the lost-wakeup race
+ * without changing TARGET, route, or Step 6.
+ *
  * The watcher is finite by design. MATCHED/TIMEOUT both terminate so the
  * runtime can emit exactly the completion notification that re-invokes the
  * owning session.
