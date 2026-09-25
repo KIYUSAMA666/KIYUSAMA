@@ -39,6 +39,14 @@ export const TARGET_CONVERSATION_ID =
  * evidence must therefore distinguish watcher exit, notification enqueue,
  * delivery/materialization, and SAME SESSION re-invocation; enqueue is not PASS.
  *
+ * Success discriminator: issue #86012 reports a fixed-path 3/3 on Desktop
+ * 1.34493.1 / engine 2.1.237 across cold, queued, and warm recipients. The
+ * recipient transcript gained enqueue + user records, a real turn started, and
+ * the warm path produced thinking/text/tool_use. Another independent probe
+ * reached idle transcript -> wake -> reply -> ACK round-trip. Step 6/7 should
+ * require equivalent transcript-level materialization + real turn evidence,
+ * never list-events/UI-card/mtime alone.
+ *
  * The watcher is finite by design. MATCHED/TIMEOUT both terminate so the
  * runtime can emit exactly the completion notification that re-invokes the
  * owning session.
