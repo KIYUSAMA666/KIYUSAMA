@@ -33,6 +33,7 @@ export async function waitForExternalWake(
   busFile: string,
   evidenceFile: string,
   timeoutMs = 30 * 60 * 1000,
+  expectedEventId?: string,
 ): Promise<WakeWatchResult> {
   await mkdir(dirname(busFile), { recursive: true });
   await mkdir(dirname(evidenceFile), { recursive: true });
@@ -93,6 +94,7 @@ export async function waitForExternalWake(
         const event = JSON.parse(raw) as WakeEvent;
         if (
           event.eventId &&
+          (!expectedEventId || event.eventId === expectedEventId) &&
           event.targetConversationId === TARGET_CONVERSATION_ID
         ) {
           await settle({
