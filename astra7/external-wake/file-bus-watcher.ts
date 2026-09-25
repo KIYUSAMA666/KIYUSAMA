@@ -29,6 +29,11 @@ export const TARGET_CONVERSATION_ID =
  * completions at 3/3 delivered, while subagent-owned completions were 0/32.
  * Ownership is therefore a Step-6 invariant, not an implementation preference.
  *
+ * Wake primitive guard: issue #87146 measured ScheduleWakeup/Cron acceptance with
+ * zero idle fires in SDK/stream-json hosts while background-task completion still
+ * re-invoked the same session. Step 6 therefore waits on native task completion;
+ * scheduler success/ACK must never be counted as WAKE evidence.
+ *
  * The watcher is finite by design. MATCHED/TIMEOUT both terminate so the
  * runtime can emit exactly the completion notification that re-invokes the
  * owning session.
