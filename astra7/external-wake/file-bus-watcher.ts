@@ -7,60 +7,64 @@ export type WakeEvent = {
   payload: string;
 };
 
-export type WakeCompletion = {
-  eventId: string;
-  targetConversationId: string;
-  observedAt: string;
-  kind: "external-wake-ready";
-};
-
 export const TARGET_CONVERSATION_ID =
   "b2ed0bb2-82f9-4d4e-8fe8-5626023086dc";
 
 /**
- * ASTRA 7 / Step 6 repair seam.
+ * ASTRA 7 / Step 6.
  *
- * World evidence shows that a background-completion notification can wake the
- * existing main session into a continuation/model turn. This watcher converts
- * an external durable-file event into the structured completion that must be
- * handed to that SAME SESSION completion channel.
+ * Proven repair boundary from anthropics/claude-code#86029:
+ *   durable file bus -> worker-owned background file watcher
+ *   -> watcher completion notification -> SAME SESSION self-wake
  *
- * IMPORTANT: externally controlled payload text is deliberately NOT forwarded
- * into the completion. The wake is a signal only; the resumed TARGET reads the
- * durable event itself after waking. This preserves the fixed TARGET boundary.
+ * This module is ONLY the durable-event predicate used by that background
+ * watcher. It deliberately does not invent a synthetic notification API.
+ * The TARGET session must arm/run the watcher through its native background
+ * task mechanism so the native completion notification owns the wake.
+ *
+ * Wake is signal-only: the external payload remains in the durable bus and is
+ * read by the resumed TARGET after the native completion wakes it.
  */
-export function armExternalWakeWatcher(
-  busFile: string,
-  notifySameSessionCompletion: (completion: WakeCompletion) => Promise<void>,
-): () => void {
-  let lastEventId: string | undefined;
-  let processing = false;
+export async function waitForExternalWake(busFile: string): Promise<WakeEvent> {
+  return new Promise<WakeEvent>((resolve, reject) => {
+    let settled = false;
 
-  const watcher = watch(busFile, async () => {
-    if (processing) return;
-    processing = true;
+    const finish = (event: WakeEvent) => {
+      if (settled) return;
+      settled = true;
+      watcher.close();
+      resolve(event);
+    };
 
-    try {
-      const raw = await readFile(busFile, "utf8");
-      const event = JSON.parse(raw) as WakeEvent;
+    const check = async () => {
+      try {
+        const raw = await readFile(busFile, "utf8");
+        const event = JSON.parse(raw) as WakeEvent;
+        if (
+          event.eventId &&
+          event.targetConversationId === TARGET_CONVERSATION_ID
+        ) {
+          finish(event);
+        }
+      } catch (error) {
+        // ENOENT / partial-write / malformed intermediate state:
+        // keep watching; a later durable write is the event boundary.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          // JSON parse can race an atomic replacement; do not consume/ack it.
+        }
+      }
+    };
 
-      if (event.targetConversationId !== TARGET_CONVERSATION_ID) return;
-      if (!event.eventId || event.eventId === lastEventId) return;
+    const watcher = watch(busFile, () => {
+      void check();
+    });
 
-      // Do not acknowledge the event until the SAME SESSION completion handoff
-      // has succeeded. A failed handoff therefore remains retryable.
-      await notifySameSessionCompletion({
-        eventId: event.eventId,
-        targetConversationId: event.targetConversationId,
-        observedAt: new Date().toISOString(),
-        kind: "external-wake-ready",
-      });
+    watcher.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
 
-      lastEventId = event.eventId;
-    } finally {
-      processing = false;
-    }
+    void check();
   });
-
-  return () => watcher.close();
 }
