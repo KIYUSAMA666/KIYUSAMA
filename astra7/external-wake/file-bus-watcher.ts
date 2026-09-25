@@ -34,6 +34,11 @@ export const TARGET_CONVERSATION_ID =
  * re-invoked the same session. Step 6 therefore waits on native task completion;
  * scheduler success/ACK must never be counted as WAKE evidence.
  *
+ * Delivery guard: issue #85534 proves task-notification enqueue can occur without
+ * a matching remove/attachment delivery and without model re-invocation. Step 6
+ * evidence must therefore distinguish watcher exit, notification enqueue,
+ * delivery/materialization, and SAME SESSION re-invocation; enqueue is not PASS.
+ *
  * The watcher is finite by design. MATCHED/TIMEOUT both terminate so the
  * runtime can emit exactly the completion notification that re-invokes the
  * owning session.
