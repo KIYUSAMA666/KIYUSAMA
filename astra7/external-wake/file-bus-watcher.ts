@@ -126,7 +126,7 @@ export async function waitForExternalWake(
         const event = JSON.parse(raw) as WakeEvent;
         if (
           event.eventId &&
-          (!expectedEventId || event.eventId === expectedEventId) &&
+          event.eventId === expectedEventId &&
           event.targetConversationId === TARGET_CONVERSATION_ID
         ) {
           await settle({
