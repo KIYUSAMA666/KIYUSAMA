@@ -61,8 +61,12 @@ export async function waitForExternalWake(
   busFile: string,
   evidenceFile: string,
   timeoutMs = 30 * 60 * 1000,
-  expectedEventId?: string,
+  expectedEventId: string,
 ): Promise<WakeWatchResult> {
+  if (!expectedEventId.trim()) {
+    throw new Error("expectedEventId is required for Step 6 correlation");
+  }
+
   await mkdir(dirname(busFile), { recursive: true });
   await mkdir(dirname(evidenceFile), { recursive: true });
 
