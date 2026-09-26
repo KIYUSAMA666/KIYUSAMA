@@ -14,6 +14,9 @@ World evidence:
 - anthropics/claude-code#77300: teammate/subagent completion did not wake the idle teammate; the main session path is explicitly reported as unaffected.
 - anthropics/claude-code#86029: file-bus workaround arms a background file-watcher per worker and uses its completion notification to self-wake.
 
+## Runtime discriminator
+The successful wake primitive is specifically the long-lived top-level interactive session's own background Bash completion path. Do not substitute a subagent-owned task, another active session, or a scheduler. The completion must return to the launching TARGET session and be proven in that TARGET transcript.
+
 ## Exact arm contract
 1. TARGET/main session creates one fresh `expectedEventId`.
 2. TARGET/main session launches the finite watcher with Bash `run_in_background: true`.
