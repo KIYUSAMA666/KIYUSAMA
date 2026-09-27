@@ -1,6 +1,10 @@
 name: OPEN ROOM Actor Canary V1
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/open-room-actor-canary-v1.yml'
   workflow_dispatch:
     inputs:
       actor_id:
