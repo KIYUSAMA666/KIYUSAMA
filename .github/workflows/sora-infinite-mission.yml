@@ -107,8 +107,12 @@ jobs:
             echo "No state change"
             exit 0
           fi
+          cp SORA_INFINITE_STATE.json /tmp/next-state.json
           git config user.name "sora-infinite-bot"
           git config user.email "sora-infinite-bot@users.noreply.github.com"
+          git fetch origin ago-runtime-state:refs/remotes/origin/ago-runtime-state
+          git checkout -B ago-runtime-state origin/ago-runtime-state
+          cp /tmp/next-state.json SORA_INFINITE_STATE.json
           git add SORA_INFINITE_STATE.json
           git commit -m "A-GO heartbeat: persist autonomous state [skip ci]"
-          git push origin HEAD:refs/heads/ago-runtime-state
+          git push origin ago-runtime-state
