@@ -60,19 +60,3 @@ jobs:
           EOF
           node /tmp/run.mjs
 
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > /tmp/mission.md <<'EOF'
-          SORA INFINITE MISSION heartbeat.
-          Read SORA_INFINITE_MISSION.md.
-          Determine whether COMPLETE or HUMAN_REQUIRED is already evidenced.
-          If neither is evidenced, identify and perform the next safe repository-read-only investigation step available in this run.
-          Never alter CODEX-S, CODEX-K, KIRA production lanes, security controls, credentials, or protected workflows.
-          Never fabricate PASS. End with exactly one status line:
-          STATUS=CONTINUE
-          STATUS=COMPLETE
-          or STATUS=HUMAN_REQUIRED
-          EOF
-          codex exec --skip-git-repo-check --sandbox read-only --output-last-message /tmp/result.txt - < /tmp/mission.md
-          cat /tmp/result.txt
