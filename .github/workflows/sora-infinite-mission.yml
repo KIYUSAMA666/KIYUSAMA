@@ -42,7 +42,7 @@ jobs:
           curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
           ollama pull qwen2.5-coder:0.5b
 
-      - name: Autonomous heartbeat
+      - name: Resume prior runtime state\n        shell: bash\n        run: |\n          git fetch origin ago-runtime-state:refs/remotes/origin/ago-runtime-state || true\n          git show origin/ago-runtime-state:SORA_INFINITE_STATE.json > /tmp/prior-state.json 2>/dev/null || true\n          if [ -s /tmp/prior-state.json ]; then cp /tmp/prior-state.json SORA_INFINITE_STATE.json; fi\n\n      - name: Autonomous heartbeat
         shell: bash
         env:
           RUN_ID: ${{ github.run_id }}
