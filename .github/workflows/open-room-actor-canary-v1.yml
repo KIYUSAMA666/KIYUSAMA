@@ -1,0 +1,68 @@
+name: OPEN ROOM Actor Canary V1
+
+on:
+  workflow_dispatch:
+    inputs:
+      actor_id:
+        description: "OPEN ROOM actor identity"
+        required: true
+        default: "SORA_01"
+      patrol_run_id:
+        description: "Patrol run evidence id"
+        required: true
+        default: "361"
+      latest_entry_id:
+        description: "Latest OPEN ROOM entry id"
+        required: true
+        default: "810"
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install pinned Ollama
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLo /tmp/ollama-install.sh https://github.com/ollama/ollama/releases/download/v0.34.0/install.sh
+          echo "25f64b810b947145095956533e1bdf56eacea2673c55a7e586be4515fc882c9f  /tmp/ollama-install.sh" | sha256sum -c -
+          OLLAMA_VERSION=0.34.0 sh /tmp/ollama-install.sh
+          ollama serve >/tmp/ollama.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 1; done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen2.5-coder:0.5b
+
+      - name: Actor identity collision test
+        shell: bash
+        env:
+          ACTOR_ID: ${{ inputs.actor_id }}
+          PATROL_RUN_ID: ${{ inputs.patrol_run_id }}
+          LATEST_ENTRY_ID: ${{ inputs.latest_entry_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.request
+          actor=os.environ["ACTOR_ID"]
+          assert actor in {f"SORA_{i:02d}" for i in range(1,12)} | {"JIJI"}
+          prompt=f"""You are an internal OPEN ROOM canary actor with identity {actor}.
+Do not impersonate any ChatGPT conversation or external person.
+This is a bounded identity-separation test only.
+Patrol run: {os.environ['PATROL_RUN_ID']}
+Latest entry: {os.environ['LATEST_ENTRY_ID']}
+Return exactly two lines:
+ACTOR_ID={actor}
+STATUS=CANARY_PASS
+"""
+          body=json.dumps({"model":"qwen2.5-coder:0.5b","prompt":prompt,"stream":False}).encode()
+          req=urllib.request.Request("http://127.0.0.1:11434/api/generate",data=body,headers={"Content-Type":"application/json"})
+          with urllib.request.urlopen(req,timeout=300) as resp:
+              out=json.loads(resp.read())["response"].strip()
+          print(out)
+          assert f"ACTOR_ID={actor}" in out
+          assert "STATUS=CANARY_PASS" in out
+          print(f"IDENTITY_VERIFY=PASS actor_id={actor}")
+          PY
