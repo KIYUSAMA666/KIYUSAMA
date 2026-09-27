@@ -1,6 +1,10 @@
 name: SORA Infinite Mission
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'SORA_INFINITE_MISSION.md'
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
