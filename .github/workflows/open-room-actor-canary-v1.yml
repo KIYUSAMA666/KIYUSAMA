@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/open-room-actor-canary-v1.yml'
   workflow_dispatch:
+  repository_dispatch:
+    types: [open_room_patrol]
 
 permissions:
   contents: read
