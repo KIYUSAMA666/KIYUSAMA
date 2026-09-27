@@ -1,0 +1,67 @@
+name: A-GO Self Dispatch Canary
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/a-go-self-dispatch-canary.yml'
+  workflow_dispatch:
+    inputs:
+      generation:
+        description: 'bounded canary generation'
+        required: false
+        default: '0'
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: a-go-self-dispatch-canary
+  cancel-in-progress: false
+
+jobs:
+  chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Determine generation
+        id: gen
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_GEN: ${{ inputs.generation }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "push" ]; then
+            GEN=0
+          else
+            GEN="${INPUT_GEN:-0}"
+          fi
+          case "$GEN" in 0|1|2) ;; *) echo "invalid generation"; exit 1;; esac
+          echo "generation=$GEN" >> "$GITHUB_OUTPUT"
+          echo "CANARY_GENERATION=$GEN"
+
+      - name: Dispatch next bounded generation
+        if: steps.gen.outputs.generation != '2'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GEN: ${{ steps.gen.outputs.generation }}
+        run: |
+          set -euo pipefail
+          NEXT=$((GEN + 1))
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/a-go-self-dispatch-canary.yml/dispatches" \
+            -d "{\"ref\":\"main\",\"inputs\":{\"generation\":\"$NEXT\"}}"
+          echo "SELF_DISPATCH_PASS next_generation=$NEXT"
+
+      - name: Verify bounded stop
+        shell: bash
+        run: |
+          echo "CANARY_PASS generation=${{ steps.gen.outputs.generation }}"
