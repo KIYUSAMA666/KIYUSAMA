@@ -81,11 +81,9 @@ jobs:
           with urllib.request.urlopen(req, timeout=300) as resp:
               actor = json.loads(resp.read())["response"].strip()
 
+          # The model is advisory; it must never be able to stop the liveness heart.
+          # Terminal control belongs to an explicit durable control plane, not free-form model output.
           status = "CONTINUE"
-          if "STATUS=COMPLETE" in actor:
-              status = "COMPLETE"
-          elif "STATUS=HUMAN_REQUIRED" in actor:
-              status = "HUMAN_REQUIRED"
 
           state["run_count"] = int(state.get("run_count", 0)) + 1
           state["status"] = status
