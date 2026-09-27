@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "goal": "Prove a human-GO-free mission loop",
+  "run_count": 0,
+  "status": "BOOTSTRAP",
+  "last_run_id": null,
+  "last_actor_output": null
+}

@@ -1,62 +1,107 @@
-name: SORA Infinite Mission
+name: SORA Infinite Mission Zero-Cost V1
 
 on:
   push:
     branches: [main]
     paths:
       - 'SORA_INFINITE_MISSION.md'
+      - '.github/workflows/sora-infinite-mission.yml'
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
-  contents: read
-  id-token: write
+  contents: write
 
 concurrency:
-  group: sora-infinite-mission
+  group: sora-infinite-mission-zero-cost
   cancel-in-progress: false
 
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          persist-credentials: false
+          fetch-depth: 0
 
-      - name: Install OpenAI SDK
-        run: npm install openai@latest
-
-      - name: Continue mission
-        env:
-          OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
-          OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
-          OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
+      - name: Install pinned Ollama
         shell: bash
         run: |
           set -euo pipefail
-          cat > run.mjs <<'EOF'
-          import fs from "node:fs";
-          import OpenAI from "openai";
-          const audience = process.env.OPENAI_WIF_AUDIENCE;
-          const identityProviderId = process.env.OPENAI_IDENTITY_PROVIDER_ID;
-          const serviceAccountId = process.env.OPENAI_SERVICE_ACCOUNT_ID;
-          const requestURL = process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
-          const requestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
-          if (!audience || !identityProviderId || !serviceAccountId || !requestURL || !requestToken) throw new Error("WIF runtime identifiers unavailable");
-          const provider = { tokenType: "jwt", getToken: async () => {
-            const url = new URL(requestURL); url.searchParams.set("audience", audience);
-            const response = await fetch(url, {headers:{Authorization: `bearer ${requestToken}`}});
-            if (!response.ok) throw new Error(`GitHub OIDC failed: ${response.status}`);
-            const body = await response.json(); if (!body.value) throw new Error("OIDC token missing"); return body.value;
-          }};
-          const client = new OpenAI({workloadIdentity:{identityProviderId,serviceAccountId,provider}});
-          const mission = fs.readFileSync("SORA_INFINITE_MISSION.md","utf8");
-          const response = await client.responses.create({model:"gpt-5.6-terra",input:"SORA INFINITE MISSION heartbeat. Read this fixed mission and return the next safe step without changing its goal. Never fabricate PASS. End STATUS=CONTINUE, STATUS=COMPLETE, or STATUS=HUMAN_REQUIRED.\n\n"+mission});
-          console.log(response.output_text);
-          EOF
-          node run.mjs
+          curl -fsSLo /tmp/ollama-install.sh https://github.com/ollama/ollama/releases/download/v0.34.0/install.sh
+          echo "25f64b810b947145095956533e1bdf56eacea2673c55a7e586be4515fc882c9f  /tmp/ollama-install.sh" | sha256sum -c -
+          OLLAMA_VERSION=0.34.0 sh /tmp/ollama-install.sh
+          ollama serve >/tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen2.5-coder:0.5b
 
+      - name: Autonomous heartbeat
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, urllib.request
+          from pathlib import Path
+
+          mission_path = Path("SORA_INFINITE_MISSION.md")
+          state_path = Path("SORA_INFINITE_STATE.json")
+          mission = mission_path.read_text()
+          before_hash = hashlib.sha256(mission.encode()).hexdigest()
+          state = json.loads(state_path.read_text())
+
+          prompt = """You are the actor in a bounded autonomous mission heartbeat.
+          Preserve the fixed GOAL and GUARDS exactly. Never claim tests you did not run.
+          Read the mission and current state. Return ONE short next safe action and end with
+          STATUS=CONTINUE, STATUS=COMPLETE, or STATUS=HUMAN_REQUIRED.
+          This heartbeat may only reason and propose the next repo-local safe action; it has no secrets.
+          
+          MISSION:
+          """ + mission + "\nSTATE:\n" + json.dumps(state)
+
+          body = json.dumps({"model":"qwen2.5-coder:0.5b","prompt":prompt,"stream":False}).encode()
+          req = urllib.request.Request("http://127.0.0.1:11434/api/generate", data=body, headers={"Content-Type":"application/json"})
+          with urllib.request.urlopen(req, timeout=300) as resp:
+              actor = json.loads(resp.read())["response"].strip()
+
+          status = "CONTINUE"
+          if "STATUS=COMPLETE" in actor:
+              status = "COMPLETE"
+          elif "STATUS=HUMAN_REQUIRED" in actor:
+              status = "HUMAN_REQUIRED"
+
+          state["run_count"] = int(state.get("run_count", 0)) + 1
+          state["status"] = status
+          state["last_run_id"] = os.environ["RUN_ID"]
+          state["last_actor_output"] = actor[:4000]
+          state["mission_sha256"] = before_hash
+          state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+
+          after_hash = hashlib.sha256(mission_path.read_bytes()).hexdigest()
+          assert before_hash == after_hash, "mission changed during actor step"
+          assert state["run_count"] >= 1
+          print(actor)
+          print("FRESH_VERIFY=PASS mission_hash_unchanged run_count=" + str(state["run_count"]))
+          PY
+
+      - name: Persist cross-run state
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- SORA_INFINITE_STATE.json; then
+            echo "No state change"
+            exit 0
+          fi
+          git config user.name "sora-infinite-bot"
+          git config user.email "sora-infinite-bot@users.noreply.github.com"
+          git add SORA_INFINITE_STATE.json
+          git commit -m "A-GO heartbeat: persist autonomous state [skip ci]"
+          git push
