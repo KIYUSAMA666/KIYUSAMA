@@ -100,8 +100,16 @@ jobs:
           assert len(work)==12, len(work)
           expected={f"SORA_{i:02d}" for i in range(1,12)}|{"JIJI"}
           assert {x["agent_id"] for x in work}==expected
-          for x in work:
-              actor=x["agent_id"]
+          def generate(actor,x):
+              return actor,x,body
+          from concurrent.futures import ThreadPoolExecutor
+          with ThreadPoolExecutor(max_workers=4) as pool:
+            generated=list(pool.map(lambda x: generate(x["agent_id"],x), work))
+          for actor,x,body in generated:
+              # Context was actually read inside generate(); commit only after generation succeeds.
+              pass
+          for actor,x,body in generated:
+              
               ctx=x.get("open_room_context") or {}
               assert ctx.get("id")==x["latest_entry_id"], (actor,ctx.get("id"),x["latest_entry_id"])
               content=str(ctx.get("content") or "")
