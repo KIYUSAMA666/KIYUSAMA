@@ -82,7 +82,7 @@ jobs:
           OIDC_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$OIDC_JSON")"
           RESULT="$(curl -fsS -H "Authorization: Bearer $OIDC_TOKEN" "https://zdypjilutgxjsneultqj.supabase.co/functions/v1/open-room-github-oidc-probe-v1")"
           echo "$RESULT"
-          python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] is True; assert x["repository"]=="KIYUSAMA666/KIYUSAMA"' <<<"$RESULT"
+          python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] is True; assert x["repository"]=="KIYUSAMA666/KIYUSAMA"; assert len(x["work"])==12' <<<"$RESULT"
 
 
       - name: Twelve actor OPEN ROOM E2E
