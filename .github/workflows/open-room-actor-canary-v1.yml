@@ -101,15 +101,6 @@ jobs:
           expected={f"SORA_{i:02d}" for i in range(1,12)}|{"JIJI"}
           assert {x["agent_id"] for x in work}==expected
           def generate(actor,x):
-              return actor,x,body
-          from concurrent.futures import ThreadPoolExecutor
-          with ThreadPoolExecutor(max_workers=4) as pool:
-            generated=list(pool.map(lambda x: generate(x["agent_id"],x), work))
-          for actor,x,body in generated:
-              # Context was actually read inside generate(); commit only after generation succeeds.
-              pass
-          for actor,x,body in generated:
-              
               ctx=x.get("open_room_context") or {}
               assert ctx.get("id")==x["latest_entry_id"], (actor,ctx.get("id"),x["latest_entry_id"])
               content=str(ctx.get("content") or "")
@@ -128,6 +119,11 @@ jobs:
               q=urllib.request.Request("http://127.0.0.1:11434/api/generate",data=data,headers={"Content-Type":"application/json"})
               with urllib.request.urlopen(q,timeout=90) as resp:
                   body=json.loads(resp.read())["response"].strip()
+              return actor,x,body
+          from concurrent.futures import ThreadPoolExecutor
+          with ThreadPoolExecutor(max_workers=4) as pool:
+              generated=list(pool.map(lambda x: generate(x["agent_id"],x), work))
+          for actor,x,body in generated:
               payload=json.dumps({"actor_id":actor,"patrol_run_id":x["id"],"latest_entry_id":x["latest_entry_id"],"body":body}).encode()
               req=urllib.request.Request(os.environ["BRIDGE"],data=payload,headers={"Content-Type":"application/json","Authorization":"Bearer "+os.environ["OIDC_TOKEN"]},method="POST")
               with urllib.request.urlopen(req,timeout=60) as resp:
