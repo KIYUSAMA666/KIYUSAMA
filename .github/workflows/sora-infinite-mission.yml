@@ -6,14 +6,13 @@ on:
     paths:
       - 'SORA_INFINITE_MISSION.md'
       - '.github/workflows/sora-infinite-mission.yml'
-  # GitHub documents that scheduled runs can be delayed/dropped at high-load
-  # boundaries such as the start of an hour. Offset the 5-minute cadence.
-  schedule:
-    - cron: '2/5 * * * *'
+  # Primary continuation is self-dispatch. GitHub schedule is intentionally not used
+  # because repository-wide schedule delivery has shown multi-hour gaps.
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: sora-infinite-mission-zero-cost
@@ -121,3 +120,42 @@ jobs:
           git add SORA_INFINITE_STATE.json
           git commit -m "A-GO heartbeat: persist autonomous state [skip ci]"
           git push origin ago-runtime-state
+
+      - name: Permanent GO self-dispatch
+        if: always() && !cancelled()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # COMPLETE/HUMAN_REQUIRED are deliberate terminal states.
+          STATUS="CONTINUE"
+          if [ -s SORA_INFINITE_STATE.json ]; then
+            STATUS="$(python3 -c 'import json; print(json.load(open("SORA_INFINITE_STATE.json")).get("status","CONTINUE"))' 2>/dev/null || echo CONTINUE)"
+          fi
+          echo "PERMANENT_GO_STATUS=$STATUS"
+          case "$STATUS" in
+            COMPLETE|HUMAN_REQUIRED)
+              echo "PERMANENT_GO_STOP=$STATUS"
+              exit 0
+              ;;
+            CONTINUE) ;;
+            *)
+              echo "Unknown state; fail closed instead of creating an uncontrolled chain: $STATUS"
+              exit 1
+              ;;
+          esac
+
+          # Cadence guard: the successor is created by the current live run, not cron.
+          sleep 240
+
+          curl --fail-with-body --retry 5 --retry-all-errors \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/sora-infinite-mission.yml/dispatches" \
+            -d '{"ref":"main"}'
+
+          echo "PERMANENT_GO_SUCCESSOR_DISPATCHED=PASS"
