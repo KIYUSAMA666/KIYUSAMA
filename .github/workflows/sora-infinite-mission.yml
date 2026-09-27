@@ -13,6 +13,7 @@ on:
 permissions:
   contents: write
   actions: write
+  id-token: write
 
 concurrency:
   group: sora-infinite-mission-zero-cost
@@ -120,6 +121,32 @@ jobs:
           git add SORA_INFINITE_STATE.json
           git commit -m "A-GO heartbeat: persist autonomous state [skip ci]"
           git push origin ago-runtime-state
+
+      - name: OPEN ROOM pending patrol wake
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRIDGE: https://zdypjilutgxjsneultqj.supabase.co/functions/v1/open-room-github-oidc-probe-v1
+        run: |
+          set -euo pipefail
+          OIDC_JSON="$(curl --fail-with-body -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=kiyusama-open-room")"
+          export OIDC_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$OIDC_JSON")"
+          WORK_JSON="$(curl --fail-with-body -sS -H "Authorization: Bearer $OIDC_TOKEN" "$BRIDGE")"
+          export WORK_JSON
+          PENDING="$(python3 - <<'PY'
+          import json, os
+          x=json.loads(os.environ["WORK_JSON"])
+          assert len(x)==12, len(x)
+          print(sum(1 for r in x if not r.get("processed",False)))
+          PY
+          )"
+          echo "OPEN_ROOM_PENDING_PATROLS=$PENDING"
+          if [ "$PENDING" -gt 0 ]; then
+            curl --fail-with-body --retry 5 --retry-all-errors               -X POST               -H "Accept: application/vnd.github+json"               -H "Authorization: Bearer $GH_TOKEN"               -H "X-GitHub-Api-Version: 2026-03-10"               "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/open-room-actor-canary-v1.yml/dispatches"               -d '{"ref":"main"}'
+            echo "OPEN_ROOM_ACTOR_WAKE_DISPATCHED=PASS"
+          else
+            echo "OPEN_ROOM_ACTOR_WAKE_DISPATCHED=SKIP_ALREADY_PROCESSED"
+          fi
 
       - name: Permanent GO self-dispatch
         if: always() && !cancelled()
