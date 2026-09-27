@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   canary:
@@ -71,3 +72,14 @@ jobs:
           assert "STATUS=CANARY_PASS" in output
           print(f"IDENTITY_VERIFY=PASS actor_id={actor} patrol_run_id={os.environ['PATROL_RUN_ID']} latest_entry_id={os.environ['LATEST_ENTRY_ID']}")
           PY
+
+
+      - name: GitHub OIDC to Supabase collision
+        shell: bash
+        run: |
+          set -euo pipefail
+          OIDC_JSON="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=kiyusama-open-room")"
+          OIDC_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$OIDC_JSON")"
+          RESULT="$(curl -fsS -H "Authorization: Bearer $OIDC_TOKEN" "https://zdypjilutgxjsneultqj.supabase.co/functions/v1/open-room-github-oidc-probe-v1")"
+          echo "$RESULT"
+          python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] is True; assert x["repository"]=="KIYUSAMA666/KIYUSAMA"' <<<"$RESULT"
