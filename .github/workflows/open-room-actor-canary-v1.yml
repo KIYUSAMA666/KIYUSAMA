@@ -116,9 +116,9 @@ jobs:
                       "\\nOPEN_ROOM_RECORD_ID="+str(ctx.get("id"))+
                       "\\nTITLE="+str(ctx.get("title") or "")+
                       "\\nCONTENT="+content)
-              data=json.dumps({"model":"qwen2.5-coder:0.5b","prompt":prompt,"stream":False}).encode()
+              data=json.dumps({"model":"qwen2.5-coder:0.5b","prompt":prompt,"stream":False,"options":{"num_predict":96}}).encode()
               q=urllib.request.Request("http://127.0.0.1:11434/api/generate",data=data,headers={"Content-Type":"application/json"})
-              with urllib.request.urlopen(q,timeout=300) as resp:
+              with urllib.request.urlopen(q,timeout=90) as resp:
                   body=json.loads(resp.read())["response"].strip()
               payload=json.dumps({"actor_id":actor,"patrol_run_id":x["id"],"latest_entry_id":x["latest_entry_id"],"body":body}).encode()
               req=urllib.request.Request(os.environ["BRIDGE"],data=payload,headers={"Content-Type":"application/json","Authorization":"Bearer "+os.environ["OIDC_TOKEN"]},method="POST")
