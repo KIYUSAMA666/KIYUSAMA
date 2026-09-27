@@ -43,9 +43,9 @@ jobs:
       - name: Actor identity collision test
         shell: bash
         env:
-          ACTOR_ID: ${{ inputs.actor_id }}
-          PATROL_RUN_ID: ${{ inputs.patrol_run_id }}
-          LATEST_ENTRY_ID: ${{ inputs.latest_entry_id }}
+          ACTOR_ID: ${{ github.event.inputs.actor_id || 'SORA_01' }}
+          PATROL_RUN_ID: ${{ github.event.inputs.patrol_run_id || '361' }}
+          LATEST_ENTRY_ID: ${{ github.event.inputs.latest_entry_id || '810' }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
