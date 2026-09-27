@@ -70,7 +70,7 @@ jobs:
           Read the mission and current state. Return ONE short next safe action and end with
           STATUS=CONTINUE, STATUS=COMPLETE, or STATUS=HUMAN_REQUIRED.
           This heartbeat may only reason and propose the next repo-local safe action; it has no secrets.
-          
+
           MISSION:
           """ + mission + "\nSTATE:\n" + json.dumps(state)
 
@@ -110,6 +110,9 @@ jobs:
           cp SORA_INFINITE_STATE.json /tmp/next-state.json
           git config user.name "sora-infinite-bot"
           git config user.email "sora-infinite-bot@users.noreply.github.com"
+          # Preserve the actor-produced state in /tmp, then clean the tracked
+          # worktree copy before switching to the dedicated runtime branch.
+          git restore --source=HEAD --staged --worktree -- SORA_INFINITE_STATE.json
           git fetch origin ago-runtime-state:refs/remotes/origin/ago-runtime-state
           git checkout -B ago-runtime-state origin/ago-runtime-state
           cp /tmp/next-state.json SORA_INFINITE_STATE.json
