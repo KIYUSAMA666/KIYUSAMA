@@ -83,3 +83,39 @@ jobs:
           RESULT="$(curl -fsS -H "Authorization: Bearer $OIDC_TOKEN" "https://zdypjilutgxjsneultqj.supabase.co/functions/v1/open-room-github-oidc-probe-v1")"
           echo "$RESULT"
           python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] is True; assert x["repository"]=="KIYUSAMA666/KIYUSAMA"' <<<"$RESULT"
+
+
+      - name: Twelve actor OPEN ROOM E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          OIDC_JSON="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=kiyusama-open-room")"
+          OIDC_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$OIDC_JSON")"
+          BRIDGE="https://zdypjilutgxjsneultqj.supabase.co/functions/v1/open-room-github-oidc-probe-v1"
+          WORK="$(curl -fsS -H "Authorization: Bearer $OIDC_TOKEN" "$BRIDGE")"
+          export WORK OIDC_TOKEN BRIDGE
+          python3 - <<'PY'
+          import json, os, urllib.request
+          work=json.loads(os.environ["WORK"])["work"]
+          assert len(work)==12, len(work)
+          expected={f"SORA_{i:02d}" for i in range(1,12)}|{"JIJI"}
+          assert {x["agent_id"] for x in work}==expected
+          for x in work:
+              actor=x["agent_id"]
+              prompt=("You are bounded internal OPEN ROOM actor "+actor+
+                      ". Do not impersonate an external person or chat. "
+                      "Return one short Japanese tavern-style work result. "
+                      "Include FACT: patrol observed and COMMENT: one useful thought.")
+              data=json.dumps({"model":"qwen2.5-coder:0.5b","prompt":prompt,"stream":False}).encode()
+              q=urllib.request.Request("http://127.0.0.1:11434/api/generate",data=data,headers={"Content-Type":"application/json"})
+              with urllib.request.urlopen(q,timeout=300) as resp:
+                  body=json.loads(resp.read())["response"].strip()
+              payload=json.dumps({"actor_id":actor,"patrol_run_id":x["id"],"latest_entry_id":x["latest_entry_id"],"body":body}).encode()
+              req=urllib.request.Request(os.environ["BRIDGE"],data=payload,headers={"Content-Type":"application/json","Authorization":"Bearer "+os.environ["OIDC_TOKEN"]},method="POST")
+              with urllib.request.urlopen(req,timeout=60) as resp:
+                  result=json.loads(resp.read())
+              assert result["ok"] is True
+              assert result["thought"]["agent_id"]==actor
+              assert result["acked_entry_id"]==x["latest_entry_id"]
+              print("OPEN_ROOM_E2E_PASS",actor,x["id"],result["thought"]["id"])
+          PY
