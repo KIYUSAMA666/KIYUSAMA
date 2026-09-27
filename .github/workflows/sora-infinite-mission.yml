@@ -133,7 +133,9 @@ jobs:
           export WORK_JSON
           PENDING="$(python3 - <<'PY'
           import json, os
-          x=json.loads(os.environ["WORK_JSON"])
+          payload=json.loads(os.environ["WORK_JSON"])
+          assert payload.get("ok") is True, payload
+          x=payload["work"]
           assert len(x)==12, len(x)
           print(sum(1 for r in x if not r.get("processed",False)))
           PY
