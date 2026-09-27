@@ -6,8 +6,10 @@ on:
     paths:
       - 'SORA_INFINITE_MISSION.md'
       - '.github/workflows/sora-infinite-mission.yml'
+  # GitHub documents that scheduled runs can be delayed/dropped at high-load
+  # boundaries such as the start of an hour. Offset the 5-minute cadence.
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '2/5 * * * *'
   workflow_dispatch:
 
 permissions:
