@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'os2-core/**'
+      - 'canaries/step6_return_outer_canary.py'
+      - 'canaries/test_step6_return_outer_canary.py'
       - '.github/workflows/os2-core-ci.yml'
 
 permissions:
@@ -24,3 +26,14 @@ jobs:
           cache-dependency-path: os2-core/package-lock.json
       - run: npm install --ignore-scripts
       - run: npm test
+
+  step6-return-outer-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run STEP6 failure-coordinate attacks
+        working-directory: canaries
+        run: |
+          python -m unittest -v test_step6_return_outer_canary.py
+          python step6_return_outer_canary.py
