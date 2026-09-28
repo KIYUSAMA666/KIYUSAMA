@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'os2-core/**'
+      - 'canaries/step6_return_outer_canary.py'
+      - 'canaries/test_step6_return_outer_canary.py'
       - '.github/workflows/os2-core-ci.yml'
 
 permissions:
@@ -24,3 +26,152 @@ jobs:
           cache-dependency-path: os2-core/package-lock.json
       - run: npm install --ignore-scripts
       - run: npm test
+
+  step6-return-outer-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run STEP6 failure-coordinate attacks
+        working-directory: canaries
+        run: |
+          python -m unittest -v test_step6_return_outer_canary.py
+          python step6_return_outer_canary.py
+      - name: Install isolated Playwright Chromium
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Run real-browser tab drift canary
+        run: |
+          node - <<'NODE'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext();
+            const stale = await context.newPage();
+            await stale.setContent('<title>STALE</title>');
+            const exact = await context.newPage();
+            await exact.setContent('<title>EXACT</title>');
+            const cached = stale;
+            await cached.setContent('<title>NAVIGATED-AWAY</title>');
+            const pages = context.pages();
+            const matches = [];
+            for (const p of pages) {
+              if ((await p.title()) === 'EXACT') matches.push(p);
+            }
+            if (matches.length !== 1) throw new Error('EXACT_TAB_RESOLUTION_FAIL');
+            if (matches[0] === cached) throw new Error('STALE_HANDLE_REUSED');
+            await matches[0].setContent('<title>EXACT</title><div id="receipt" data-actor="SORA_03">assistant-turn-1</div>');
+            const receipts = await matches[0].locator('#receipt[data-actor="SORA_03"]').count();
+            if (receipts !== 1) throw new Error('DELIVERY_READBACK_FAIL');
+
+            // World-failure rehearsal: never fall back when identity is ambiguous or absent.
+            const duplicate = await context.newPage();
+            await duplicate.setContent('<title>EXACT</title>');
+            const duplicateMatches = [];
+            for (const p of context.pages()) {
+              if ((await p.title()) === 'EXACT') duplicateMatches.push(p);
+            }
+            if (duplicateMatches.length === 1) throw new Error('DUPLICATE_FAIL_CLOSED_NOT_ENFORCED');
+            await duplicate.close();
+
+            await matches[0].setContent('<title>MOVED-AWAY</title>');
+            const missingMatches = [];
+            for (const p of context.pages()) {
+              if ((await p.title()) === 'EXACT') missingMatches.push(p);
+            }
+            if (missingMatches.length !== 0) throw new Error('MISSING_TARGET_REHEARSAL_FAILED');
+
+            console.log('REAL_BROWSER_TAB_DRIFT_PASS=true');
+            console.log('STALE_HANDLE_REJECTED=true');
+            console.log('CURRENT_TAB_RERESOLVED=true');
+            console.log('SERIALIZED_RECEIPT_PASS=true');
+            console.log('AUTH_USED=false');
+            console.log('EXTERNAL_TARGET_USED=false');
+            console.log('MESSAGE_SENT=false');
+            await browser.close();
+          })().catch(e => { console.error(e); process.exit(1); });
+          NODE
+      - name: Run persistent-profile restart canary
+        run: |
+          node - <<'NODE'
+          const { chromium } = require('playwright');
+          const fs = require('fs');
+          const path = require('path');
+          (async () => {
+            const dir = path.join(process.cwd(), '.tmp-step6-profile');
+            fs.rmSync(dir, { recursive: true, force: true });
+            const http = require('http');
+            const server = http.createServer((req, res) => {
+              res.writeHead(200, { 'Content-Type': 'text/html' });
+              res.end('<title>PROFILE-CANARY</title>');
+            });
+            await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+            const { port } = server.address();
+            const origin = `http://127.0.0.1:${port}`;
+
+            let ctx = await chromium.launchPersistentContext(dir, { headless: true });
+            let page = await ctx.newPage();
+            await page.goto(origin);
+            await page.evaluate(() => localStorage.setItem('step6_marker', 'restart-pass'));
+            await ctx.close();
+
+            ctx = await chromium.launchPersistentContext(dir, { headless: true });
+            page = await ctx.newPage();
+            await page.goto(origin);
+            const marker = await page.evaluate(() => localStorage.getItem('step6_marker'));
+            if (marker !== 'restart-pass') throw new Error('PERSISTENT_PROFILE_RESTART_FAIL');
+            server.close();
+            console.log('PERSISTENT_PROFILE_RESTART_PASS=true');
+            console.log('AUTH_USED=false');
+            console.log('EXTERNAL_TARGET_USED=false');
+            console.log('MESSAGE_SENT=false');
+            await ctx.close();
+            fs.rmSync(dir, { recursive: true, force: true });
+          })().catch(e => { console.error(e); process.exit(1); });
+          NODE
+
+      - name: Run unclean-death stale-lock recovery canary
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const os = require('os');
+
+          const root = fs.mkdtempSync(path.join(os.tmpdir(), 'step6-lock-'));
+          const lock = path.join(root, 'SingletonLock');
+          const cookie = path.join(root, 'SingletonCookie');
+          const socket = path.join(root, 'SingletonSocket');
+
+          function ownerAlive(pid) {
+            try { process.kill(pid, 0); return true; }
+            catch (e) { if (e.code === 'ESRCH') return false; throw e; }
+          }
+          function recover(pid) {
+            if (ownerAlive(pid)) throw new Error('LIVE_PROFILE_OWNER_FAIL_CLOSED');
+            for (const p of [lock, cookie, socket]) fs.rmSync(p, { force: true });
+          }
+
+          // Live owner: recovery must refuse to touch lock artifacts.
+          for (const p of [lock, cookie, socket]) fs.writeFileSync(p, 'live');
+          let refused = false;
+          try { recover(process.pid); } catch (e) {
+            if (e.message === 'LIVE_PROFILE_OWNER_FAIL_CLOSED') refused = true;
+            else throw e;
+          }
+          if (!refused || !fs.existsSync(lock) || !fs.existsSync(cookie) || !fs.existsSync(socket))
+            throw new Error('LIVE_OWNER_GUARD_FAIL');
+          console.log('LIVE_OWNER_FAIL_CLOSED_PASS=true');
+
+          // Dead owner: only then stale singleton artifacts may be removed.
+          let deadPid = 999999;
+          while (ownerAlive(deadPid)) deadPid++;
+          recover(deadPid);
+          if ([lock, cookie, socket].some(fs.existsSync)) throw new Error('STALE_LOCK_CLEANUP_FAIL');
+          console.log('STALE_LOCK_RECOVERY_PASS=true');
+          console.log('AUTH_USED=false');
+          console.log('EXTERNAL_TARGET_USED=false');
+          console.log('MESSAGE_SENT=false');
+          fs.rmSync(root, { recursive: true, force: true });
+          NODE

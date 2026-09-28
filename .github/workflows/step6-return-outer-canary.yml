@@ -1,0 +1,24 @@
+name: STEP6 Return Outer Canary
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'canaries/step6_return_outer_canary.py'
+      - 'canaries/test_step6_return_outer_canary.py'
+      - '.github/workflows/step6-return-outer-canary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  failure-coordinate-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run exact-return failure attacks
+        working-directory: canaries
+        run: |
+          python -m unittest -v test_step6_return_outer_canary.py
+          python step6_return_outer_canary.py
