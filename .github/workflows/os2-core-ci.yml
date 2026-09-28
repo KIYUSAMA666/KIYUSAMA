@@ -65,6 +65,24 @@ jobs:
             await matches[0].setContent('<title>EXACT</title><div id="receipt" data-actor="SORA_03">assistant-turn-1</div>');
             const receipts = await matches[0].locator('#receipt[data-actor="SORA_03"]').count();
             if (receipts !== 1) throw new Error('DELIVERY_READBACK_FAIL');
+
+            // World-failure rehearsal: never fall back when identity is ambiguous or absent.
+            const duplicate = await context.newPage();
+            await duplicate.setContent('<title>EXACT</title>');
+            const duplicateMatches = [];
+            for (const p of context.pages()) {
+              if ((await p.title()) === 'EXACT') duplicateMatches.push(p);
+            }
+            if (duplicateMatches.length === 1) throw new Error('DUPLICATE_FAIL_CLOSED_NOT_ENFORCED');
+            await duplicate.close();
+
+            await matches[0].setContent('<title>MOVED-AWAY</title>');
+            const missingMatches = [];
+            for (const p of context.pages()) {
+              if ((await p.title()) === 'EXACT') missingMatches.push(p);
+            }
+            if (missingMatches.length !== 0) throw new Error('MISSING_TARGET_REHEARSAL_FAILED');
+
             console.log('REAL_BROWSER_TAB_DRIFT_PASS=true');
             console.log('STALE_HANDLE_REJECTED=true');
             console.log('CURRENT_TAB_RERESOLVED=true');
