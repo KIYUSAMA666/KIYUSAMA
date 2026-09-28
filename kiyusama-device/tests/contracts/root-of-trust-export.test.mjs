@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{isTrustedAnchor}from'../../dist/contracts/index.js';test('trust anchor registry is exported',()=>assert.equal(typeof isTrustedAnchor,'function'));

@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{validateAuthority}from'../../dist/contracts/index.js';test('authority validator is exported',()=>assert.equal(typeof validateAuthority,'function'));

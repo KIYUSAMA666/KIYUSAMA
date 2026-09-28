@@ -1,0 +1,1 @@
+export interface KernelHealth{memory:boolean;signal:boolean;execution:boolean;worker:boolean;counter:boolean;tonton:boolean;evidence:boolean;containment:boolean}export function kernelHealth(h:KernelHealth){const failed=Object.entries(h).filter(([,v])=>!v).map(([k])=>k);return{ready:failed.length===0,failed}}

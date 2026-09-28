@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{runOs2}from'../../dist/contracts/index.js';test('OS2 runtime controller is exported',()=>assert.equal(typeof runOs2,'function'));

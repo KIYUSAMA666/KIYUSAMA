@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{validateSignalEnvelope}from'../../dist/contracts/index.js';test('signal bus boundary is exported',()=>assert.equal(typeof validateSignalEnvelope,'function'));

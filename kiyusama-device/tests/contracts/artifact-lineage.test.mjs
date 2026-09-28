@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { traceArtifactLineage, validateArtifactLineageEdge } from '../../dist/contracts/artifact-lineage.js';
+const t='2026-09-07T09:50:00+09:00';
+const edge=(id,parent,children,transition='DECOMPOSED',status='VERIFIED',evidence=[{ref:`evidence:${id}`}])=>({schema_version:'kiyusama-artifact-lineage/2.0-draft1',lineage_edge_id:id,parent_artifact_id:parent,child_artifact_ids:children,transition_type:transition,evidence_refs:evidence,verification_status:status,recorded_at:t});
+test('one artifact can decompose into two children',()=>{const e=edge('e1','A',['B','C']);validateArtifactLineageEdge(e);const r=traceArtifactLineage('A',[e]);assert.deepEqual(r.descendants,['B','C'])});
+test('descendant can branch again into grandchildren',()=>{const r=traceArtifactLineage('A',[edge('e1','A',['B','C']),edge('e2','B',['D','E'],'MIGRATED')]);assert.deepEqual(r.descendants,['B','C','D','E'])});
+test('UNKNOWN lineage is preserved without being promoted to VERIFIED',()=>{const e=edge('e1','A',['B'],'MIGRATED','UNKNOWN',[]);validateArtifactLineageEdge(e);assert.equal(e.verification_status,'UNKNOWN')});
+test('VERIFIED lineage requires evidence',()=>assert.throws(()=>validateArtifactLineageEdge(edge('e1','A',['B'],'MIGRATED','VERIFIED',[])),/VERIFIED_REQUIRES_EVIDENCE/));
+test('cycles are rejected',()=>assert.throws(()=>traceArtifactLineage('A',[edge('e1','A',['B']),edge('e2','B',['A'])]),/LINEAGE_CYCLE_DETECTED/));

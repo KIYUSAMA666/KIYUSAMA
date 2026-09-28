@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{recoveryGate}from'../../dist/contracts/index.js';test('pre-action recovery gate is exported',()=>assert.equal(typeof recoveryGate,'function'));

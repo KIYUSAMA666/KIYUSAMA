@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{canTransitionRuntimeState}from'../../dist/contracts/index.js';test('runtime state guard is exported',()=>assert.equal(typeof canTransitionRuntimeState,'function'));

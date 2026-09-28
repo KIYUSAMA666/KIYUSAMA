@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{isFresh}from'../../dist/contracts/index.js';test('freshness gate is exported',()=>assert.equal(typeof isFresh,'function'));

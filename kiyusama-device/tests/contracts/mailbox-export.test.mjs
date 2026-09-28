@@ -1,0 +1,1 @@
+import test from'node:test';import assert from'node:assert/strict';import{validateMailboxMessage}from'../../dist/contracts/index.js';test('mailbox boundary is exported',()=>assert.equal(typeof validateMailboxMessage,'function'));

@@ -1,0 +1,1 @@
+export function loopGuard(path:string[],next:string,maxHops:number){if(maxHops<1||path.length>=maxHops)return{allow:false,reason:'HOP_BUDGET_EXHAUSTED'};if(path.includes(next))return{allow:false,reason:'LOOP_DETECTED'};return{allow:true,reason:'OK'}}
