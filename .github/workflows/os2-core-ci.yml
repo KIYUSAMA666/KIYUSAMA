@@ -102,17 +102,27 @@ jobs:
           (async () => {
             const dir = path.join(process.cwd(), '.tmp-step6-profile');
             fs.rmSync(dir, { recursive: true, force: true });
+            const http = require('http');
+            const server = http.createServer((req, res) => {
+              res.writeHead(200, { 'Content-Type': 'text/html' });
+              res.end('<title>PROFILE-CANARY</title>');
+            });
+            await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+            const { port } = server.address();
+            const origin = `http://127.0.0.1:${port}`;
+
             let ctx = await chromium.launchPersistentContext(dir, { headless: true });
             let page = await ctx.newPage();
-            await page.goto('data:text/html,<title>PROFILE-SEED</title>');
+            await page.goto(origin);
             await page.evaluate(() => localStorage.setItem('step6_marker', 'restart-pass'));
             await ctx.close();
 
             ctx = await chromium.launchPersistentContext(dir, { headless: true });
             page = await ctx.newPage();
-            await page.goto('data:text/html,<title>PROFILE-READBACK</title>');
+            await page.goto(origin);
             const marker = await page.evaluate(() => localStorage.getItem('step6_marker'));
             if (marker !== 'restart-pass') throw new Error('PERSISTENT_PROFILE_RESTART_FAIL');
+            server.close();
             console.log('PERSISTENT_PROFILE_RESTART_PASS=true');
             console.log('AUTH_USED=false');
             console.log('EXTERNAL_TARGET_USED=false');
