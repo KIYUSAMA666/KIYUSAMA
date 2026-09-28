@@ -1,0 +1,35 @@
+name: free-browser-runtime-canary
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chromium-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Playwright Chromium
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Launch Chromium without auth or send
+        run: |
+          node - <<'NODE'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage();
+            await page.setContent('<title>KIYUSAMA FREE BROWSER CANARY</title><h1>PASS</h1>');
+            console.log('BROWSER_LAUNCH_PASS=' + (await page.title()));
+            console.log('AUTH_USED=false');
+            console.log('NETWORK_TARGET_USED=false');
+            console.log('MESSAGE_SENT=false');
+            await browser.close();
+          })().catch(e => { console.error(e); process.exit(1); });
+          NODE
