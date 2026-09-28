@@ -37,3 +37,33 @@ class TestTabIdentityDrift(unittest.TestCase):
         after=before+[{"turn_id":"NEW","actor_id":"SORA_04","role":"assistant"}]
         with self.assertRaisesRegex(RuntimeError,"DELIVERY_READBACK_FAIL"):
             verify_receipt(before,after,"SORA_03")
+
+
+class TestSerializedReturnReceipt(unittest.TestCase):
+    def test_old_receipt_is_not_new_turn(self):
+        before=[{"turn_id":"T1","actor_id":"SORA_03","role":"assistant"}]
+        after=list(before)
+        with self.assertRaisesRegex(RuntimeError,"DELIVERY_READBACK_FAIL"):
+            verify_receipt(before,after,"SORA_03")
+
+    def test_two_new_assistant_turns_fail_ambiguity(self):
+        after=[
+            {"turn_id":"T1","actor_id":"SORA_03","role":"assistant"},
+            {"turn_id":"T2","actor_id":"SORA_03","role":"assistant"},
+        ]
+        with self.assertRaisesRegex(RuntimeError,"DELIVERY_READBACK_FAIL"):
+            verify_receipt([],after,"SORA_03")
+
+    def test_out_of_order_foreign_turn_fails(self):
+        after=[
+            {"turn_id":"T2","actor_id":"SORA_04","role":"assistant"},
+            {"turn_id":"T1","actor_id":"SORA_03","role":"assistant"},
+        ]
+        with self.assertRaisesRegex(RuntimeError,"DELIVERY_READBACK_FAIL"):
+            verify_receipt([],after,"SORA_03")
+
+    def test_exactly_one_new_bound_turn_passes(self):
+        before=[{"turn_id":"OLD","actor_id":"SORA_03","role":"assistant"}]
+        after=before+[{"turn_id":"NEW","actor_id":"SORA_03","role":"assistant"}]
+        receipt=verify_receipt(before,after,"SORA_03")
+        self.assertEqual(receipt["turn_id"],"NEW")
