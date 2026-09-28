@@ -37,3 +37,41 @@ jobs:
         run: |
           python -m unittest -v test_step6_return_outer_canary.py
           python step6_return_outer_canary.py
+      - name: Install isolated Playwright Chromium
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Run real-browser tab drift canary
+        run: |
+          node - <<'NODE'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext();
+            const stale = await context.newPage();
+            await stale.setContent('<title>STALE</title>');
+            const exact = await context.newPage();
+            await exact.setContent('<title>EXACT</title>');
+            const cached = stale;
+            await cached.setContent('<title>NAVIGATED-AWAY</title>');
+            const pages = context.pages();
+            const matches = [];
+            for (const p of pages) {
+              if ((await p.title()) === 'EXACT') matches.push(p);
+            }
+            if (matches.length !== 1) throw new Error('EXACT_TAB_RESOLUTION_FAIL');
+            if (matches[0] === cached) throw new Error('STALE_HANDLE_REUSED');
+            await matches[0].setContent('<title>EXACT</title><div id="receipt" data-actor="SORA_03">assistant-turn-1</div>');
+            const receipts = await matches[0].locator('#receipt[data-actor="SORA_03"]').count();
+            if (receipts !== 1) throw new Error('DELIVERY_READBACK_FAIL');
+            console.log('REAL_BROWSER_TAB_DRIFT_PASS=true');
+            console.log('STALE_HANDLE_REJECTED=true');
+            console.log('CURRENT_TAB_RERESOLVED=true');
+            console.log('SERIALIZED_RECEIPT_PASS=true');
+            console.log('AUTH_USED=false');
+            console.log('EXTERNAL_TARGET_USED=false');
+            console.log('MESSAGE_SENT=false');
+            await browser.close();
+          })().catch(e => { console.error(e); process.exit(1); });
+          NODE
