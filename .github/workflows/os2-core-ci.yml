@@ -93,3 +93,31 @@ jobs:
             await browser.close();
           })().catch(e => { console.error(e); process.exit(1); });
           NODE
+      - name: Run persistent-profile restart canary
+        run: |
+          node - <<'NODE'
+          const { chromium } = require('playwright');
+          const fs = require('fs');
+          const path = require('path');
+          (async () => {
+            const dir = path.join(process.cwd(), '.tmp-step6-profile');
+            fs.rmSync(dir, { recursive: true, force: true });
+            let ctx = await chromium.launchPersistentContext(dir, { headless: true });
+            let page = await ctx.newPage();
+            await page.goto('data:text/html,<title>PROFILE-SEED</title>');
+            await page.evaluate(() => localStorage.setItem('step6_marker', 'restart-pass'));
+            await ctx.close();
+
+            ctx = await chromium.launchPersistentContext(dir, { headless: true });
+            page = await ctx.newPage();
+            await page.goto('data:text/html,<title>PROFILE-READBACK</title>');
+            const marker = await page.evaluate(() => localStorage.getItem('step6_marker'));
+            if (marker !== 'restart-pass') throw new Error('PERSISTENT_PROFILE_RESTART_FAIL');
+            console.log('PERSISTENT_PROFILE_RESTART_PASS=true');
+            console.log('AUTH_USED=false');
+            console.log('EXTERNAL_TARGET_USED=false');
+            console.log('MESSAGE_SENT=false');
+            await ctx.close();
+            fs.rmSync(dir, { recursive: true, force: true });
+          })().catch(e => { console.error(e); process.exit(1); });
+          NODE
