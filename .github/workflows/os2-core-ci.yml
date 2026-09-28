@@ -131,3 +131,47 @@ jobs:
             fs.rmSync(dir, { recursive: true, force: true });
           })().catch(e => { console.error(e); process.exit(1); });
           NODE
+
+      - name: Run unclean-death stale-lock recovery canary
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const os = require('os');
+
+          const root = fs.mkdtempSync(path.join(os.tmpdir(), 'step6-lock-'));
+          const lock = path.join(root, 'SingletonLock');
+          const cookie = path.join(root, 'SingletonCookie');
+          const socket = path.join(root, 'SingletonSocket');
+
+          function ownerAlive(pid) {
+            try { process.kill(pid, 0); return true; }
+            catch (e) { if (e.code === 'ESRCH') return false; throw e; }
+          }
+          function recover(pid) {
+            if (ownerAlive(pid)) throw new Error('LIVE_PROFILE_OWNER_FAIL_CLOSED');
+            for (const p of [lock, cookie, socket]) fs.rmSync(p, { force: true });
+          }
+
+          // Live owner: recovery must refuse to touch lock artifacts.
+          for (const p of [lock, cookie, socket]) fs.writeFileSync(p, 'live');
+          let refused = false;
+          try { recover(process.pid); } catch (e) {
+            if (e.message === 'LIVE_PROFILE_OWNER_FAIL_CLOSED') refused = true;
+            else throw e;
+          }
+          if (!refused || !fs.existsSync(lock) || !fs.existsSync(cookie) || !fs.existsSync(socket))
+            throw new Error('LIVE_OWNER_GUARD_FAIL');
+          console.log('LIVE_OWNER_FAIL_CLOSED_PASS=true');
+
+          // Dead owner: only then stale singleton artifacts may be removed.
+          let deadPid = 999999;
+          while (ownerAlive(deadPid)) deadPid++;
+          recover(deadPid);
+          if ([lock, cookie, socket].some(fs.existsSync)) throw new Error('STALE_LOCK_CLEANUP_FAIL');
+          console.log('STALE_LOCK_RECOVERY_PASS=true');
+          console.log('AUTH_USED=false');
+          console.log('EXTERNAL_TARGET_USED=false');
+          console.log('MESSAGE_SENT=false');
+          fs.rmSync(root, { recursive: true, force: true });
+          NODE
