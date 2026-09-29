@@ -28,9 +28,9 @@ jobs:
           if not token:
               raise SystemExit("BROWSERLESS_API_KEY_MISSING")
           with sync_playwright() as p:
-              browser, context, page = connect_saved_profile(p, token, profile="kira-external")
+              browser, context, page = connect_saved_profile(p, token, profile="kira-external", headless=False)
               page.goto(TARGET, wait_until="domcontentloaded", timeout=90000)
-              page.wait_for_timeout(5000)
+              page.wait_for_timeout(15000)
               exact_url = page.url == TARGET
               composer = page.locator('[data-testid="chat-input"]')
               composer_visible = composer.count() == 1 and composer.is_visible()
