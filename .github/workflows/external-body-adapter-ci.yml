@@ -31,6 +31,12 @@ on:
       - 'tests/test_external_body_playwright_surface.py'
       - '.github/workflows/external-body-adapter-ci.yml'
   workflow_dispatch:
+    inputs:
+      browserless_readonly_probe:
+        description: 'Run Browserless saved-profile read-only qualification'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -100,4 +106,45 @@ jobs:
           assert "token=FAKE_TEST_TOKEN" in ws
 
           print("PROFILE_LAUNCHER_SMOKE_PASS")
+          PY
+
+  browserless-readonly:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.browserless_readonly_probe }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      BROWSERLESS_API_KEY: ${{ secrets.BROWSERLESS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Playwright client only
+        run: pip install playwright
+      - name: Qualify saved Browserless profile against fixed external KIRA (READ ONLY)
+        run: |
+          python - <<'PY'
+          import os
+          from playwright.sync_api import sync_playwright
+          from external_body_browserless_profile import connect_saved_profile
+
+          TARGET = "https://claude.ai/chat/b2ed0bb2-82f9-4d4e-8fe8-5626023086dc"
+          token = os.environ.get("BROWSERLESS_API_KEY")
+          if not token:
+              raise SystemExit("BROWSERLESS_API_KEY_MISSING")
+
+          with sync_playwright() as p:
+              browser, context, page = connect_saved_profile(p, token, profile="kira-external")
+              page.goto(TARGET, wait_until="domcontentloaded", timeout=90000)
+              page.wait_for_timeout(2500)
+              exact_url = page.url == TARGET
+              composer = page.locator('[data-testid="chat-input"]')
+              composer_visible = composer.count() == 1 and composer.is_visible()
+              print(f"EXACT_TARGET={exact_url}")
+              print(f"COMPOSER_VISIBLE={composer_visible}")
+              print(f"READ_ONLY=true")
+              print(f"SEND_COUNT=0")
+              if not exact_url or not composer_visible:
+                  raise SystemExit("READ_ONLY_QUALIFICATION_FAIL")
+              browser.close()
           PY
