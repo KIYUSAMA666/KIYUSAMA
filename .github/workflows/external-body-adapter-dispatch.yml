@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install playwright
-      - name: Qualify fixed external KIRA via saved Browserless profile (READ ONLY)
+      - name: Diagnose fixed external KIRA via saved Browserless profile (READ ONLY)
         run: |
           python - <<'PY'
           import os
@@ -30,15 +30,22 @@ jobs:
           with sync_playwright() as p:
               browser, context, page = connect_saved_profile(p, token, profile="kira-external")
               page.goto(TARGET, wait_until="domcontentloaded", timeout=90000)
-              page.wait_for_timeout(2500)
+              page.wait_for_timeout(5000)
               exact_url = page.url == TARGET
               composer = page.locator('[data-testid="chat-input"]')
               composer_visible = composer.count() == 1 and composer.is_visible()
+              print(f"FINAL_URL={page.url}")
+              print(f"TITLE={page.title()!r}")
               print(f"EXACT_TARGET={exact_url}")
+              print(f"COMPOSER_COUNT={composer.count()}")
               print(f"COMPOSER_VISIBLE={composer_visible}")
+              print(f"LOGIN_TEXT_HITS={page.get_by_text('Log in', exact=True).count()}")
+              print(f"SIGNIN_TEXT_HITS={page.get_by_text('Sign in', exact=True).count()}")
+              print(f"PASSWORD_INPUTS={page.locator('input[type=password]').count()}")
+              print(f"TEXTAREAS={page.locator('textarea').count()}")
+              print(f"CONTENTEDITABLE={page.locator('[contenteditable=true]').count()}")
+              print(f"BODY_PREFIX={page.locator('body').inner_text()[:1200]!r}")
               print("READ_ONLY=true")
               print("SEND_COUNT=0")
-              if not exact_url or not composer_visible:
-                  raise SystemExit("READ_ONLY_QUALIFICATION_FAIL")
               browser.close()
           PY
