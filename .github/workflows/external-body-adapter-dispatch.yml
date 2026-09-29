@@ -1,0 +1,13 @@
+name: external-body-adapter-dispatch
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  entry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sora/external-body-adapter-20260923
+      - run: echo "ASTRA7_DISPATCH_ENTRY_READY"
