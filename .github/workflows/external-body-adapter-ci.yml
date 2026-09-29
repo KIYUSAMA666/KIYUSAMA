@@ -16,6 +16,7 @@ on:
       - 'external_body_browser_runtime.py'
       - 'external_body_real_browser_qualification.py'
       - 'external_body_playwright_surface.py'
+      - 'external_body_profile_launcher.py'
       - 'tests/test_external_body_adapter.py'
       - 'tests/test_external_body_transport.py'
       - 'tests/test_external_body_capture_checkpoint.py'
@@ -44,3 +45,52 @@ jobs:
           python-version: '3.12'
       - name: Run external body adapter transport and durable capture tests
         run: python -m unittest tests.test_external_body_adapter tests.test_external_body_transport tests.test_external_body_capture_checkpoint tests.test_external_body_writeback_binding tests.test_external_body_claude_provider tests.test_external_body_claude_capture tests.test_external_body_session_lease tests.test_external_body_claude_guarded_driver tests.test_external_body_browser_runtime tests.test_external_body_real_browser_qualification tests.test_external_body_playwright_surface -v
+      - name: Verify profile-owned launcher without browser, auth, network, or send
+        run: |
+          python - <<'PY'
+          from external_body_profile_launcher import launch_existing_profile, bind_existing_context
+
+          class Context:
+              def __init__(self):
+                  self.pages = []
+              def new_page(self):
+                  page = object()
+                  self.pages.append(page)
+                  return page
+
+          class Chromium:
+              def __init__(self):
+                  self.kwargs = None
+                  self.ctx = Context()
+              def launch_persistent_context(self, **kwargs):
+                  self.kwargs = kwargs
+                  return self.ctx
+
+          class Playwright:
+              def __init__(self):
+                  self.chromium = Chromium()
+
+          class Browser:
+              def __init__(self, count):
+                  self.contexts = [Context() for _ in range(count)]
+
+          p = Playwright()
+          context, page = launch_existing_profile(p, "/retained/profile", headless=False)
+          assert p.chromium.kwargs["user_data_dir"] == "/retained/profile"
+          assert "storage_state" not in p.chromium.kwargs
+          assert context is p.chromium.ctx
+
+          browser = Browser(1)
+          bound_context, bound_page = bind_existing_context(browser)
+          assert bound_context is browser.contexts[0]
+
+          for count in (0, 2):
+              try:
+                  bind_existing_context(Browser(count))
+              except RuntimeError as exc:
+                  assert str(exc) == "EXACT_EXISTING_CONTEXT_REQUIRED"
+              else:
+                  raise AssertionError("ambiguous/fresh context must fail closed")
+
+          print("PROFILE_LAUNCHER_SMOKE_PASS")
+          PY
