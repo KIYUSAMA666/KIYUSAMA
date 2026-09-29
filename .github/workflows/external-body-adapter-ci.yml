@@ -17,6 +17,7 @@ on:
       - 'external_body_real_browser_qualification.py'
       - 'external_body_playwright_surface.py'
       - 'external_body_profile_launcher.py'
+      - 'external_body_browserless_profile.py'
       - 'tests/test_external_body_adapter.py'
       - 'tests/test_external_body_transport.py'
       - 'tests/test_external_body_capture_checkpoint.py'
@@ -91,6 +92,12 @@ jobs:
                   assert str(exc) == "EXACT_EXISTING_CONTEXT_REQUIRED"
               else:
                   raise AssertionError("ambiguous/fresh context must fail closed")
+
+          from external_body_browserless_profile import browserless_profile_ws
+          ws = browserless_profile_ws("FAKE_TEST_TOKEN", profile="kira-external")
+          assert ws.startswith("wss://production-sfo.browserless.io/chromium?")
+          assert "profile=kira-external" in ws
+          assert "token=FAKE_TEST_TOKEN" in ws
 
           print("PROFILE_LAUNCHER_SMOKE_PASS")
           PY
