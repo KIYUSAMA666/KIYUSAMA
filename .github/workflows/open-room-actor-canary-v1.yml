@@ -96,10 +96,13 @@ jobs:
           export WORK OIDC_TOKEN BRIDGE
           python3 - <<'PY'
           import json, os, urllib.request
-          work=json.loads(os.environ["WORK"])["work"]
-          assert len(work)==12, len(work)
+          all_work=json.loads(os.environ["WORK"])["work"]
+          assert len(all_work)==12, len(all_work)
           expected={f"SORA_{i:02d}" for i in range(1,12)}|{"JIJI"}
-          assert {x["agent_id"] for x in work}==expected
+          assert {x["agent_id"] for x in all_work}==expected
+          # SORA_03 is reserved for the canonical BODY delivery path.
+          # Never let the Ollama substitute own/commit that actor, and never redeliver processed work.
+          work=[x for x in all_work if x["agent_id"]!="SORA_03" and not x.get("processed", False)]
           def generate(actor,x):
               ctx=x.get("open_room_context") or {}
               assert ctx.get("id")==x["latest_entry_id"], (actor,ctx.get("id"),x["latest_entry_id"])
