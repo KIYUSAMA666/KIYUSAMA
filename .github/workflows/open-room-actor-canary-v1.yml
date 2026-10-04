@@ -100,6 +100,10 @@ jobs:
           assert len(work)==12, len(work)
           expected={f"SORA_{i:02d}" for i in range(1,12)}|{"JIJI"}
           assert {x["agent_id"] for x in work}==expected
+          # SORA_03 ownership is reserved for the canonical SORA_03 BODY.
+          # The Ollama substitute must never generate, POST, commit, or ACK it.
+          # Completed patrols are also excluded from delivery.
+          work=[x for x in work if x["agent_id"]!="SORA_03" and not x.get("processed",False)]
           def generate(actor,x):
               ctx=x.get("open_room_context") or {}
               assert ctx.get("id")==x["latest_entry_id"], (actor,ctx.get("id"),x["latest_entry_id"])
