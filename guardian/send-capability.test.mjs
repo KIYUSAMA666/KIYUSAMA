@@ -12,7 +12,7 @@ function rig(){
  const lock=new DurableBodyLock(path.join(d,"lock.json"));
  const ledger=new DurableLedger(path.join(d,"ledger.json"));
  lock.acquire({bodyId:"SORA_01",ownerId:"proc-A"});
- ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"proc-A",preSendCommitted:true,sendStarted:false,resultCommitted:false});
+ ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"proc-A",workId:"W",expectedUserTurnId:"U",preSendCommitted:true,sendStarted:false,resultCommitted:false});
  return {lock,ledger};
 }
 
@@ -27,7 +27,7 @@ test("guardian capability commits SEND_STARTED before effect",async()=>{
  const originalRecord=r.ledger.record.bind(r.ledger);
  r.ledger.record=(...args)=>{const out=originalRecord(...args); if(out.sendStarted) order.push("LEDGER"); return out;};
  const port=createEffectfulSendPort(async()=>{order.push("SEND"); return "ok";});
- const cap=createGuardianSendCapability({...r,bodyId:"SORA_01",ownerId:"proc-A",effectfulSend:port});
+ const cap=createGuardianSendCapability({...r,bodyId:"SORA_01",ownerId:"proc-A",workId:"W",expectedUserTurnId:"U",effectfulSend:port});
  assert.equal(await cap.send("hello"),"ok");
  assert.deepEqual(order,["LEDGER","SEND"]);
  assert.equal(new DurableLedger(r.ledger.file).get("SORA_01").sendStarted,true);
@@ -38,7 +38,7 @@ test("missing gate prerequisites means zero effectful SEND",async()=>{
  const lock=new DurableBodyLock(path.join(d,"lock.json"));
  const ledger=new DurableLedger(path.join(d,"ledger.json"));
  let sends=0; const port=createEffectfulSendPort(async()=>{sends++;});
- const cap=createGuardianSendCapability({bodyId:"SORA_01",ownerId:"proc-A",lock,ledger,effectfulSend:port});
+ const cap=createGuardianSendCapability({bodyId:"SORA_01",ownerId:"proc-A",workId:"W",expectedUserTurnId:"U",lock,ledger,effectfulSend:port});
  await assert.rejects(()=>cap.send("hello"));
  assert.equal(sends,0);
 });
@@ -46,8 +46,21 @@ test("missing gate prerequisites means zero effectful SEND",async()=>{
 test("second capability SEND is blocked after SEND_STARTED",async()=>{
  const r=rig(); let sends=0;
  const port=createEffectfulSendPort(async()=>{sends++; return "ok";});
- const cap=createGuardianSendCapability({...r,bodyId:"SORA_01",ownerId:"proc-A",effectfulSend:port});
+ const cap=createGuardianSendCapability({...r,bodyId:"SORA_01",ownerId:"proc-A",workId:"W",expectedUserTurnId:"U",effectfulSend:port});
  assert.equal(await cap.send("one"),"ok");
  await assert.rejects(()=>cap.send("two"));
  assert.equal(sends,1);
+});
+
+
+test("omitted work or expected turn cannot inherit ledger authority",async()=>{
+ for (const missing of ["workId","expectedUserTurnId"]) {
+  const r=rig(); let sends=0;
+  const args={...r,bodyId:"SORA_01",ownerId:"proc-A",workId:"W",expectedUserTurnId:"U",effectfulSend:createEffectfulSendPort(async()=>{sends++;})};
+  delete args[missing];
+  const cap=createGuardianSendCapability(args);
+  await assert.rejects(()=>cap.send("hello"),/SEND_COORDINATE_REQUIRED/);
+  assert.equal(sends,0);
+  assert.equal(r.ledger.get("SORA_01").sendStarted,false);
+ }
 });
