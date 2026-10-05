@@ -6,11 +6,11 @@ export class GuardianCapabilityError extends Error {
   constructor(reason){ super("SEND_CAPABILITY_BLOCKED: "+reason); this.name="GuardianCapabilityError"; this.reason=reason; }
 }
 
-export function createGuardianSendCapability({ bodyId, ownerId, lock, ledger, effectfulSend }) {
+export function createGuardianSendCapability({ bodyId, ownerId, workId, expectedUserTurnId, lock, ledger, effectfulSend }) {
   if (typeof effectfulSend !== "function") throw new TypeError("effectfulSend required");
 
   async function guardedSend(payload) {
-    const started=commitSendStarted({bodyId,ownerId,lock,ledger});
+    const started=commitSendStarted({bodyId,ownerId,workId,expectedUserTurnId,lock,ledger});
     if (started.sendStarted!==true) throw new GuardianCapabilityError("SEND_STARTED_NOT_DURABLE");
     return effectfulSend(SEND_TOKEN,payload);
   }
