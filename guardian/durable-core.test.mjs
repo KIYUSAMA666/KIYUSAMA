@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { DurableBodyLock, BodyLockError, DurableLedger, recoveryDecision } from "./durable-core.mjs";
 
 function temp(name){ const d=fs.mkdtempSync(path.join(os.tmpdir(),"guardian-")); return path.join(d,name); }
@@ -42,4 +43,17 @@ test("ledger sequence advances durably",()=>{
  assert.equal(l.record("SORA_01",{state:"LOCKED",sendStarted:false}).seq,1);
  assert.equal(l.record("SORA_01",{state:"SENDING",sendStarted:true}).seq,2);
  assert.equal(new DurableLedger(file).get("SORA_01").seq,2);
+});
+
+
+test("two processes racing for one BODY produce exactly one owner",async()=>{
+ const file=temp("body.lock");
+ const moduleUrl=new URL("./durable-core.mjs",import.meta.url).href;
+ const script=`import {DurableBodyLock} from ${JSON.stringify(moduleUrl)};const [file,owner]=process.argv.slice(1);try{new DurableBodyLock(file).acquire({bodyId:"SORA_01",ownerId:owner});process.stdout.write("WON")}catch(e){process.stdout.write("BLOCKED:"+e.message)}`;
+ const run=owner=>new Promise((resolve,reject)=>{const p=spawn(process.execPath,["--input-type=module","-e",script,file,owner]);let out="";p.stdout.on("data",d=>out+=d);p.on("error",reject);p.on("close",()=>resolve(out));});
+ const [a,b]=await Promise.all([run("proc-A"),run("proc-B")]);
+ assert.equal([a,b].filter(x=>x==="WON").length,1);
+ assert.equal([a,b].filter(x=>x.startsWith("BLOCKED:")).length,1);
+ const saved=new DurableBodyLock(file).read();
+ assert.ok(saved.ownerId==="proc-A"||saved.ownerId==="proc-B");
 });
