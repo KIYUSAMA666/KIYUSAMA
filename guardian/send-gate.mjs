@@ -1,10 +1,12 @@
-import { GuardianState, transition } from "./control-core.mjs";
+import { GuardianState } from "./control-core.mjs";
 
 export class SendGateError extends Error {
   constructor(reason) { super("SEND_BLOCKED: " + reason); this.name="SendGateError"; this.reason=reason; }
 }
 
 export function verifySendPrerequisites({ bodyId, ownerId, workId, expectedUserTurnId, lock, ledger }) {
+  if (![bodyId,ownerId,workId,expectedUserTurnId].every(v=>typeof v==="string" && v.trim().length>0))
+    throw new SendGateError("SEND_COORDINATE_REQUIRED");
   const held=lock.read();
   if (!held) throw new SendGateError("BODY_LOCK_MISSING");
   if (held.bodyId!==bodyId || held.ownerId!==ownerId) throw new SendGateError("BODY_LOCK_NOT_OWNED");
@@ -22,8 +24,8 @@ export function verifySendPrerequisites({ bodyId, ownerId, workId, expectedUserT
 }
 
 export function openSendGate(args) {
-  const proof=verifySendPrerequisites(args);
-  return { ...proof, state:transition(GuardianState.LOCKED, GuardianState.SENDING) };
+  // No in-memory SENDING permission: grant only after durable SEND_STARTED.
+  return commitSendStarted(args);
 }
 
 export function commitSendStarted({ bodyId, ownerId, workId, expectedUserTurnId, lock, ledger }) {
