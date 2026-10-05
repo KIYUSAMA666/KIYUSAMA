@@ -21,3 +21,16 @@ test("final session preserves all durable coordinates from PRE-SEND through RESU
  for(const [k,v] of Object.entries(coord)) assert.equal(reopened[k],v,"restart lost "+k);
  assert.equal(reopened.state,GuardianState.RESULT_COMMITTED);
 });
+
+test("final session blocks SEND when PRE-SEND work coordinate differs",async()=>{
+ const d=fs.mkdtempSync(path.join(os.tmpdir(),"guardian-e2e-work-mismatch-"));const lock=new DurableBodyLock(path.join(d,"lock.json"));const ledger=new DurableLedger(path.join(d,"ledger.json"));
+ lock.acquire({bodyId:"B",ownerId:"O"});ledger.record("B",{state:GuardianState.LOCKED,ownerId:"O",workId:"OTHER",expectedUserTurnId:"U",preSendCommitted:true,sendStarted:false,resultCommitted:false});
+ let sends=0;const adapter=assembleFinalSessionAdapter({bodyId:"B",ownerId:"O",workId:"W",expectedUserTurnId:"U",lock,ledger,rawSend:async()=>{sends++},rawResultCommit:async()=>{},observe:()=>null,compose:()=>null,captureReturn:async()=>({})});
+ await assert.rejects(()=>adapter.send("p"),/PRE_SEND_WORK_MISMATCH/);assert.equal(sends,0);
+});
+test("final session blocks SEND when PRE-SEND expected user turn differs",async()=>{
+ const d=fs.mkdtempSync(path.join(os.tmpdir(),"guardian-e2e-turn-mismatch-"));const lock=new DurableBodyLock(path.join(d,"lock.json"));const ledger=new DurableLedger(path.join(d,"ledger.json"));
+ lock.acquire({bodyId:"B",ownerId:"O"});ledger.record("B",{state:GuardianState.LOCKED,ownerId:"O",workId:"W",expectedUserTurnId:"OTHER",preSendCommitted:true,sendStarted:false,resultCommitted:false});
+ let sends=0;const adapter=assembleFinalSessionAdapter({bodyId:"B",ownerId:"O",workId:"W",expectedUserTurnId:"U",lock,ledger,rawSend:async()=>{sends++},rawResultCommit:async()=>{},observe:()=>null,compose:()=>null,captureReturn:async()=>({})});
+ await assert.rejects(()=>adapter.send("p"),/PRE_SEND_USER_TURN_MISMATCH/);assert.equal(sends,0);
+});
