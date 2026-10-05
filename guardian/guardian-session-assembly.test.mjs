@@ -8,8 +8,8 @@ import { assembleGuardianSessionCapabilities } from "./guardian-session-assembly
 function rig(){
  const d=fs.mkdtempSync(path.join(os.tmpdir(),"guardian-session-"));
  const lock=new DurableBodyLock(path.join(d,"lock.json")); const ledger=new DurableLedger(path.join(d,"ledger.json"));
- lock.acquire("SORA_01","A");
- ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"A",workId:"W",sendStarted:false,resultCommitted:false});
+ lock.acquire({bodyId:"SORA_01",ownerId:"A"});
+ ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"A",workId:"W",expectedUserTurnId:"u1",preSendCommitted:true,sendStarted:false,resultCommitted:false});
  let sends=0,results=0;
  const cap=assembleGuardianSessionCapabilities({bodyId:"SORA_01",ownerId:"A",workId:"W",expectedUserTurnId:"u1",lock,ledger,
   rawSend:async()=>{sends++;},rawResultCommit:async({saved})=>{results++;return saved;}});
