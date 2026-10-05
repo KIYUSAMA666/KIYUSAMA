@@ -6,7 +6,7 @@ import { createEffectfulSendPort, createGuardianSendCapability } from "./send-ca
 import { createExternalBodyAdapterBoundary, assertNoRawSendSurface } from "./external-body-adapter-boundary.mjs";
 
 export function wireLegacyAdapterBehindGuardian({
-  bodyId, ownerId, lock, ledger,
+  bodyId, ownerId, workId, expectedUserTurnId, lock, ledger,
   legacyObserve, legacyCompose, legacyCapture,
   legacyEffectfulClick,
 }) {
@@ -16,7 +16,7 @@ export function wireLegacyAdapterBehindGuardian({
   // It is never returned to the adapter/public boundary.
   const guardianEffectfulPort=createEffectfulSendPort(async payload=>legacyEffectfulClick(payload));
   const guardianCapability=createGuardianSendCapability({
-    bodyId,ownerId,lock,ledger,effectfulSend:guardianEffectfulPort,
+    bodyId,ownerId,workId,expectedUserTurnId,lock,ledger,effectfulSend:guardianEffectfulPort,
   });
 
   const adapter=createExternalBodyAdapterBoundary({
