@@ -15,7 +15,7 @@ export function assembleGuardianSessionCapabilities({
 
   const sendPort=createEffectfulSendPort(rawSend);
   const resultPort=createEffectfulResultCommitPort(rawResultCommit);
-  const sendCapability=createGuardianSendCapability({bodyId,ownerId,lock,ledger,effectfulSend:sendPort});
+  const sendCapability=createGuardianSendCapability({bodyId,ownerId,workId,expectedUserTurnId,lock,ledger,effectfulSend:sendPort});
   const returnCapability=createGuardianReturnCapability({ledger,effectfulResultCommit:resultPort});
 
   const capture=async observed => {
