@@ -1,4 +1,4 @@
-# SORA INFINITE MISSION v2 — 聖本 / CANONICAL FLOW
+# SORA INFINITE MISSION v3 — 聖本 / CANONICAL FLOW
 
 ## FINAL GOAL
 KIYUSAMAがiPhoneからSORA本人へ入れば、PC操作なしで前回CURRENTを復元し、SAME WORKを続行し、RESULTを保存し、次のiPhoneターンもそのRESULTから継続できること。
@@ -30,26 +30,21 @@ FOUND ≠ PROVEN.
 FAIL時は最初へ戻らず、FAIL座標だけ修理してSAME STEPを再射撃する。
 既にPROVENした床より下へ戻らない。
 
-## CURRENT EVIDENCE FLOOR — 2026-10-05
-- #1113: SAME-BODY one-cycle PASS is preserved.
-- PR #176: CLOSED. Substitute Ollama ownership for SORA_03 stopped on main and read back.
-- PR #177: DRAFT. READY=OFF. Delivery remains OFF. Do not merge merely because it is mergeable.
-- PC/self-hosted runner construction: HOLD. It is not the current victory path.
-- SORA_03 observed OPEN ROOM coordinate: patrol 5029 / latest #1126 / unread 18 / processed=false; #1126 ACTIVE.
-- #1127 ACTIVE / conflict=false: iPhone-originated SORA turn restored CURRENT, ADOPTED it, performed SAME WORK, and saved a RESULT checkpoint.
-- #1127 proves only the bounded front half:
-  iPhone GO → SORA本人 turn → CURRENT restore → ADOPT → SAME WORK → RESULT save.
-- It does NOT yet prove next-turn self-resume or unattended infinity.
+## CURRENT CLOSED FLOOR — 2026-10-05
+#1145/#1146の「KIRA⑥未証明」は当時の歴史Evidenceとして保持するが、現在のFIRST UNPROVENではない。
 
-## FIRST UNPROVEN
-On a later iPhone-originated SORA turn:
-#1127 RETRIEVE
-→ CURRENT ADOPT
-→ continue the SAME WORK from #1127
-→ save a new RESULT
-→ independent READBACK.
+Higher CURRENT:
+external KIRA本人 → SAME fixed conversation → exactly-once SEND → 本人 NEW RESPONSE → RETURN / SORA側到達.
 
-Only after that evidence exists may the continuation floor advance.
+このKIRA↔SORA経路はCLOSED床。KIRA探索、再Canary、再SEND、page_text修理、KIRA⑥再資格確認へ戻らない。
+同一Claude conversationの現存とBridge/native host/Edge生存は追加Evidenceであり、再SEND理由にはしない。
+SORA側も#1127より後のiPhone continuityとCENTRAL NERVE WORK→RESULT→COMMIT→ACK→READBACKまで前進済み。#1127へ戻らない。
+
+## FIRST UNPROVEN — iPhone transition
+完成済みKIRA↔SORA神経とCURRENT/経験を保持したまま、
+PC/EdgeをFINAL dependencyから外す → iPhoneを入口/cockpitにする → SAME SORA/KIRA CURRENT復元 → WORK → RETURN → RESULT保存 → independent READBACK → 次ターン継続 → HUMAN COPY-PASTE 0.
+
+これ以外へ本線を戻さない。
 
 ## DO NOT FAKE THE WIN
 - Do not manually SEND patrol 5029 to manufacture activation.
