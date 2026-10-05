@@ -1,10 +1,11 @@
-import { GuardianState, transition } from "./control-core.mjs";
+import { GuardianState } from "./control-core.mjs";
 
 export class SendGateError extends Error {
   constructor(reason) { super("SEND_BLOCKED: " + reason); this.name="SendGateError"; this.reason=reason; }
 }
 
 export function verifySendPrerequisites({ bodyId, ownerId, workId, expectedUserTurnId, lock, ledger }) {
+  if (!bodyId || !ownerId || !workId || !expectedUserTurnId) throw new SendGateError("SEND_COORDINATE_REQUIRED");
   const held=lock.read();
   if (!held) throw new SendGateError("BODY_LOCK_MISSING");
   if (held.bodyId!==bodyId || held.ownerId!==ownerId) throw new SendGateError("BODY_LOCK_NOT_OWNED");
@@ -14,16 +15,16 @@ export function verifySendPrerequisites({ bodyId, ownerId, workId, expectedUserT
   if (entry.state!==GuardianState.LOCKED) throw new SendGateError("PRE_SEND_STATE_INVALID");
   if (entry.ownerId!==ownerId) throw new SendGateError("PRE_SEND_OWNER_MISMATCH");
   if (!entry.workId) throw new SendGateError("PRE_SEND_WORK_MISSING");
-  if (workId && entry.workId!==workId) throw new SendGateError("PRE_SEND_WORK_MISMATCH");
-  if (expectedUserTurnId && entry.expectedUserTurnId!==expectedUserTurnId) throw new SendGateError("PRE_SEND_USER_TURN_MISMATCH");
+  if (entry.workId!==workId) throw new SendGateError("PRE_SEND_WORK_MISMATCH");
+  if (entry.expectedUserTurnId!==expectedUserTurnId) throw new SendGateError("PRE_SEND_USER_TURN_MISMATCH");
   if (entry.preSendCommitted!==true) throw new SendGateError("PRE_SEND_COMMIT_MISSING");
   if (entry.sendStarted===true) throw new SendGateError("SEND_ALREADY_STARTED");
   return { bodyId, ownerId, seq:entry.seq };
 }
 
 export function openSendGate(args) {
-  const proof=verifySendPrerequisites(args);
-  return { ...proof, state:transition(GuardianState.LOCKED, GuardianState.SENDING) };
+  // Grant permission only after this gate has durably marked SEND_STARTED.
+  return commitSendStarted(args);
 }
 
 export function commitSendStarted({ bodyId, ownerId, workId, expectedUserTurnId, lock, ledger }) {
