@@ -44,3 +44,11 @@ test("second SEND attempt is blocked after SEND_STARTED",()=>{
  commitSendStarted({bodyId:"SORA_01",ownerId:"proc-A",...r});
  assert.throws(()=>openSendGate({bodyId:"SORA_01",ownerId:"proc-A",...r}),SendGateError);
 });
+
+
+test("SEND_STARTED preserves durable work coordinate for RETURN", () => {
+  const r=rig();
+  const started=commitSendStarted({bodyId:"SORA_01",ownerId:"owner-A",lock:r.lock,ledger:r.ledger});
+  assert.equal(started.workId,"work-1");
+  assert.equal(r.ledger.get("SORA_01").workId,"work-1");
+});
