@@ -4,7 +4,7 @@ export class SendGateError extends Error {
   constructor(reason) { super("SEND_BLOCKED: " + reason); this.name="SendGateError"; this.reason=reason; }
 }
 
-export function verifySendPrerequisites({ bodyId, ownerId, lock, ledger }) {
+export function verifySendPrerequisites({ bodyId, ownerId, workId, expectedUserTurnId, lock, ledger }) {
   const held=lock.read();
   if (!held) throw new SendGateError("BODY_LOCK_MISSING");
   if (held.bodyId!==bodyId || held.ownerId!==ownerId) throw new SendGateError("BODY_LOCK_NOT_OWNED");
@@ -14,6 +14,8 @@ export function verifySendPrerequisites({ bodyId, ownerId, lock, ledger }) {
   if (entry.state!==GuardianState.LOCKED) throw new SendGateError("PRE_SEND_STATE_INVALID");
   if (entry.ownerId!==ownerId) throw new SendGateError("PRE_SEND_OWNER_MISMATCH");
   if (!entry.workId) throw new SendGateError("PRE_SEND_WORK_MISSING");
+  if (workId && entry.workId!==workId) throw new SendGateError("PRE_SEND_WORK_MISMATCH");
+  if (expectedUserTurnId && entry.expectedUserTurnId!==expectedUserTurnId) throw new SendGateError("PRE_SEND_USER_TURN_MISMATCH");
   if (entry.preSendCommitted!==true) throw new SendGateError("PRE_SEND_COMMIT_MISSING");
   if (entry.sendStarted===true) throw new SendGateError("SEND_ALREADY_STARTED");
   return { bodyId, ownerId, seq:entry.seq };
@@ -24,8 +26,8 @@ export function openSendGate(args) {
   return { ...proof, state:transition(GuardianState.LOCKED, GuardianState.SENDING) };
 }
 
-export function commitSendStarted({ bodyId, ownerId, lock, ledger }) {
-  verifySendPrerequisites({bodyId,ownerId,lock,ledger});
+export function commitSendStarted({ bodyId, ownerId, workId, expectedUserTurnId, lock, ledger }) {
+  verifySendPrerequisites({bodyId,ownerId,workId,expectedUserTurnId,lock,ledger});
   const current=ledger.get(bodyId);
   return ledger.record(bodyId,{
     ...current,
