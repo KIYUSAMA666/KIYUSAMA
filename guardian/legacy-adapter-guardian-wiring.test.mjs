@@ -16,14 +16,14 @@ function rig(){
 
 test("legacy raw click is not exposed by wired adapter",()=>{
  const r=rig();
- const adapter=wireLegacyAdapterBehindGuardian({...r,bodyId:"SORA_01",ownerId:"A",legacyEffectfulClick:async()=>{}});
+ const adapter=wireLegacyAdapterBehindGuardian({...r,bodyId:"SORA_01",ownerId:"A",workId:"W",expectedUserTurnId:"U",legacyEffectfulClick:async()=>{}});
  assert.deepEqual(Object.keys(adapter).sort(),["capture","compose","observe","send"]);
  for(const k of ["legacyEffectfulClick","rawSend","click_send_once","page","driver","surface"]) assert.equal(k in adapter,false);
 });
 
 test("legacy effectful click cannot run when Guardian prerequisites are absent",async()=>{
  const r=rig(); let clicks=0;
- const adapter=wireLegacyAdapterBehindGuardian({...r,bodyId:"SORA_01",ownerId:"A",legacyEffectfulClick:async()=>{clicks++;}});
+ const adapter=wireLegacyAdapterBehindGuardian({...r,bodyId:"SORA_01",ownerId:"A",workId:"W",expectedUserTurnId:"U",legacyEffectfulClick:async()=>{clicks++;}});
  await assert.rejects(()=>adapter.send("x"));
  assert.equal(clicks,0);
 });
@@ -31,8 +31,8 @@ test("legacy effectful click cannot run when Guardian prerequisites are absent",
 test("legacy click runs only after durable SEND_STARTED",async()=>{
  const r=rig(); let observed=null;
  r.lock.acquire({bodyId:"SORA_01",ownerId:"A"});
- r.ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"A",preSendCommitted:true,sendStarted:false,resultCommitted:false});
- const adapter=wireLegacyAdapterBehindGuardian({...r,bodyId:"SORA_01",ownerId:"A",legacyEffectfulClick:async()=>{
+ r.ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"A",workId:"W",expectedUserTurnId:"U",preSendCommitted:true,sendStarted:false,resultCommitted:false});
+ const adapter=wireLegacyAdapterBehindGuardian({...r,bodyId:"SORA_01",ownerId:"A",workId:"W",expectedUserTurnId:"U",legacyEffectfulClick:async()=>{
    observed=new DurableLedger(r.ledger.file).get("SORA_01");
    return "clicked";
  }});
@@ -44,9 +44,26 @@ test("legacy click runs only after durable SEND_STARTED",async()=>{
 test("second adapter SEND cannot invoke legacy click twice",async()=>{
  const r=rig(); let clicks=0;
  r.lock.acquire({bodyId:"SORA_01",ownerId:"A"});
- r.ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"A",preSendCommitted:true,sendStarted:false,resultCommitted:false});
- const adapter=wireLegacyAdapterBehindGuardian({...r,bodyId:"SORA_01",ownerId:"A",legacyEffectfulClick:async()=>{clicks++;}});
+ r.ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"A",workId:"W",expectedUserTurnId:"U",preSendCommitted:true,sendStarted:false,resultCommitted:false});
+ const adapter=wireLegacyAdapterBehindGuardian({...r,bodyId:"SORA_01",ownerId:"A",workId:"W",expectedUserTurnId:"U",legacyEffectfulClick:async()=>{clicks++;}});
  await adapter.send("one");
  await assert.rejects(()=>adapter.send("two"));
  assert.equal(clicks,1);
+});
+
+
+test("legacy wiring blocks mismatched work coordinate before effectful click",async()=>{
+ const r=rig(); let clicks=0;
+ r.lock.acquire({bodyId:"SORA_01",ownerId:"A"});
+ r.ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"A",workId:"OTHER",expectedUserTurnId:"U",preSendCommitted:true,sendStarted:false,resultCommitted:false});
+ const adapter=wireLegacyAdapterBehindGuardian({...r,bodyId:"SORA_01",ownerId:"A",workId:"W",expectedUserTurnId:"U",legacyEffectfulClick:async()=>{clicks++;}});
+ await assert.rejects(()=>adapter.send("x"),/PRE_SEND_WORK_MISMATCH/); assert.equal(clicks,0);
+});
+
+test("legacy wiring blocks mismatched expected user turn before effectful click",async()=>{
+ const r=rig(); let clicks=0;
+ r.lock.acquire({bodyId:"SORA_01",ownerId:"A"});
+ r.ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"A",workId:"W",expectedUserTurnId:"OTHER",preSendCommitted:true,sendStarted:false,resultCommitted:false});
+ const adapter=wireLegacyAdapterBehindGuardian({...r,bodyId:"SORA_01",ownerId:"A",workId:"W",expectedUserTurnId:"U",legacyEffectfulClick:async()=>{clicks++;}});
+ await assert.rejects(()=>adapter.send("x"),/PRE_SEND_USER_TURN_MISMATCH/); assert.equal(clicks,0);
 });
