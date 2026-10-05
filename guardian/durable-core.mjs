@@ -57,15 +57,28 @@ export class DurableBodyLock {
 }
 
 export class DurableLedger {
-  constructor(file) { this.file=file; }
+  constructor(file) { this.file=file; this.lockFile=file+".lock"; }
   read() { return readJson(this.file,{version:1,bodies:{}}); }
   record(bodyId, entry) {
-    const data=this.read();
-    const previous=data.bodies[bodyId] ?? null;
-    const seq=(previous?.seq ?? 0)+1;
-    data.bodies[bodyId]={...entry,seq,bodyId,recordedAt:new Date().toISOString()};
-    atomicWriteJson(this.file,data);
-    return data.bodies[bodyId];
+    fs.mkdirSync(path.dirname(this.lockFile), { recursive: true });
+    let lockFd;
+    try {
+      lockFd=fs.openSync(this.lockFile,"wx",0o600);
+    } catch (e) {
+      if (e.code==="EEXIST") throw new Error("LEDGER_UPDATE_BUSY");
+      throw e;
+    }
+    try {
+      const data=this.read();
+      const previous=data.bodies[bodyId] ?? null;
+      const seq=(previous?.seq ?? 0)+1;
+      data.bodies[bodyId]={...entry,seq,bodyId,recordedAt:new Date().toISOString()};
+      atomicWriteJson(this.file,data);
+      return data.bodies[bodyId];
+    } finally {
+      fs.closeSync(lockFd);
+      fs.unlinkSync(this.lockFile);
+    }
   }
   get(bodyId) { return this.read().bodies[bodyId] ?? null; }
 }
