@@ -9,10 +9,10 @@ import { SendGateError, openSendGate, commitSendStarted } from "./send-gate.mjs"
 
 function rig(){
  const d=fs.mkdtempSync(path.join(os.tmpdir(),"guardian-gate-"));
- return {lock:new DurableBodyLock(path.join(d,"lock.json")),ledger:new DurableLedger(path.join(d,"ledger.json"))};
+ return {workId:"work-1",expectedUserTurnId:"user-1",lock:new DurableBodyLock(path.join(d,"lock.json")),ledger:new DurableLedger(path.join(d,"ledger.json"))};
 }
 function precommit(r,bodyId="SORA_01",ownerId="proc-A"){
- r.ledger.record(bodyId,{state:GuardianState.LOCKED,ownerId,preSendCommitted:true,sendStarted:false,resultCommitted:false});
+ r.ledger.record(bodyId,{state:GuardianState.LOCKED,ownerId,workId:r.workId,expectedUserTurnId:r.expectedUserTurnId,preSendCommitted:true,sendStarted:false,resultCommitted:false});
 }
 
 test("SEND blocked without BODY lock",()=>{
@@ -30,7 +30,7 @@ test("SEND blocked when lock owner and ledger owner differ",()=>{
 test("SEND gate opens only with owned lock plus durable PRE-SEND",()=>{
  const r=rig(); r.lock.acquire({bodyId:"SORA_01",ownerId:"proc-A"}); precommit(r);
  const out=openSendGate({bodyId:"SORA_01",ownerId:"proc-A",...r});
- assert.equal(out.state,GuardianState.SENDING); assert.equal(out.seq,1);
+ assert.equal(out.state,GuardianState.SENDING); assert.equal(out.seq,2);
 });
 test("SEND_STARTED is durably committed before adapter side effect",()=>{
  const r=rig(); r.lock.acquire({bodyId:"SORA_01",ownerId:"proc-A"}); precommit(r);
@@ -48,7 +48,8 @@ test("second SEND attempt is blocked after SEND_STARTED",()=>{
 
 test("SEND_STARTED preserves durable work coordinate for RETURN", () => {
   const r=rig();
-  const started=commitSendStarted({bodyId:"SORA_01",ownerId:"owner-A",lock:r.lock,ledger:r.ledger});
+  r.lock.acquire({bodyId:"SORA_01",ownerId:"owner-A"}); precommit(r,"SORA_01","owner-A");
+  const started=commitSendStarted({bodyId:"SORA_01",ownerId:"owner-A",...r});
   assert.equal(started.workId,"work-1");
   assert.equal(r.ledger.get("SORA_01").workId,"work-1");
 });
