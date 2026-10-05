@@ -25,13 +25,27 @@ export class DurableBodyLock {
   constructor(file) { this.file=file; }
   read() { return readJson(this.file, null); }
   acquire({bodyId, ownerId}) {
-    const current=this.read();
-    if (current && current.bodyId===bodyId && current.ownerId!==ownerId)
-      throw new BodyLockError("BODY_ALREADY_OWNED");
-    if (current && current.bodyId!==bodyId)
-      throw new BodyLockError("LOCK_FILE_BOUND_TO_OTHER_BODY");
     const lock={bodyId,ownerId,acquiredAt:new Date().toISOString()};
-    atomicWriteJson(this.file,lock); return lock;
+    fs.mkdirSync(path.dirname(this.file), { recursive: true });
+    let fd;
+    try {
+      // O_EXCL makes first ownership creation atomic across processes.
+      fd=fs.openSync(this.file, "wx", 0o600);
+      fs.writeFileSync(fd, JSON.stringify(lock, null, 2) + "\n", "utf8");
+      fs.fsyncSync(fd);
+    } catch (e) {
+      if (fd!==undefined) { try { fs.closeSync(fd); } catch {} fd=undefined; }
+      if (e.code!=="EEXIST") throw e;
+      const current=this.read();
+      if (current && current.bodyId===bodyId && current.ownerId===ownerId) return current;
+      if (current && current.bodyId!==bodyId) throw new BodyLockError("LOCK_FILE_BOUND_TO_OTHER_BODY");
+      throw new BodyLockError("BODY_ALREADY_OWNED");
+    } finally {
+      if (fd!==undefined) fs.closeSync(fd);
+    }
+    const dfd=fs.openSync(path.dirname(this.file),"r");
+    try { fs.fsyncSync(dfd); } finally { fs.closeSync(dfd); }
+    return lock;
   }
   release({bodyId, ownerId}) {
     const current=this.read();
