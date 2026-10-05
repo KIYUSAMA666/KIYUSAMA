@@ -12,8 +12,8 @@ function rig(){
  const lock=new DurableBodyLock(path.join(d,"lock.json"));
  const ledger=new DurableLedger(path.join(d,"ledger.json"));
  lock.acquire({bodyId:"SORA_01",ownerId:"proc-A"});
- ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"proc-A",preSendCommitted:true,sendStarted:false,resultCommitted:false});
- return {lock,ledger};
+ ledger.record("SORA_01",{state:GuardianState.LOCKED,ownerId:"proc-A",workId:"work-1",expectedUserTurnId:"user-1",preSendCommitted:true,sendStarted:false,resultCommitted:false});
+ return {lock,ledger,workId:"work-1",expectedUserTurnId:"user-1"};
 }
 
 test("raw effectful port rejects adapter direct call",async()=>{
@@ -38,7 +38,7 @@ test("missing gate prerequisites means zero effectful SEND",async()=>{
  const lock=new DurableBodyLock(path.join(d,"lock.json"));
  const ledger=new DurableLedger(path.join(d,"ledger.json"));
  let sends=0; const port=createEffectfulSendPort(async()=>{sends++;});
- const cap=createGuardianSendCapability({bodyId:"SORA_01",ownerId:"proc-A",lock,ledger,effectfulSend:port});
+ const cap=createGuardianSendCapability({bodyId:"SORA_01",ownerId:"proc-A",workId:"work-1",expectedUserTurnId:"user-1",lock,ledger,effectfulSend:port});
  await assert.rejects(()=>cap.send("hello"));
  assert.equal(sends,0);
 });
@@ -51,3 +51,14 @@ test("second capability SEND is blocked after SEND_STARTED",async()=>{
  await assert.rejects(()=>cap.send("two"));
  assert.equal(sends,1);
 });
+
+for (const missing of ["bodyId","ownerId","workId","expectedUserTurnId"]) {
+ test("missing "+missing+" cannot reach effectful SEND",async()=>{
+  const r=rig(); let sends=0;
+  const args={...r,bodyId:"SORA_01",ownerId:"proc-A",effectfulSend:createEffectfulSendPort(async()=>{sends++;})};
+  delete args[missing];
+  const cap=createGuardianSendCapability(args);
+  await assert.rejects(()=>cap.send("payload"),/SEND_COORDINATE_REQUIRED/);
+  assert.equal(sends,0); assert.equal(r.ledger.get("SORA_01").sendStarted,false);
+ });
+}
