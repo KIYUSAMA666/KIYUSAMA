@@ -13,6 +13,7 @@ export function verifySendPrerequisites({ bodyId, ownerId, lock, ledger }) {
   if (!entry) throw new SendGateError("PRE_SEND_COMMIT_MISSING");
   if (entry.state!==GuardianState.LOCKED) throw new SendGateError("PRE_SEND_STATE_INVALID");
   if (entry.ownerId!==ownerId) throw new SendGateError("PRE_SEND_OWNER_MISMATCH");
+  if (!entry.workId) throw new SendGateError("PRE_SEND_WORK_MISSING");
   if (entry.preSendCommitted!==true) throw new SendGateError("PRE_SEND_COMMIT_MISSING");
   if (entry.sendStarted===true) throw new SendGateError("SEND_ALREADY_STARTED");
   return { bodyId, ownerId, seq:entry.seq };
@@ -25,9 +26,12 @@ export function openSendGate(args) {
 
 export function commitSendStarted({ bodyId, ownerId, lock, ledger }) {
   verifySendPrerequisites({bodyId,ownerId,lock,ledger});
+  const current=ledger.get(bodyId);
   return ledger.record(bodyId,{
+    ...current,
     state:GuardianState.SENDING,
     ownerId,
+    workId:current.workId,
     preSendCommitted:true,
     sendStarted:true,
     resultCommitted:false,
