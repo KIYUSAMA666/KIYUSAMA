@@ -53,7 +53,8 @@ test("two processes racing for one BODY produce exactly one owner",async()=>{
  const run=owner=>new Promise((resolve,reject)=>{const p=spawn(process.execPath,["--input-type=module","-e",script,file,owner]);let out="";p.stdout.on("data",d=>out+=d);p.on("error",reject);p.on("close",()=>resolve(out));});
  const [a,b]=await Promise.all([run("proc-A"),run("proc-B")]);
  assert.equal([a,b].filter(x=>x==="WON").length,1);
- assert.equal([a,b].filter(x=>x==="BLOCKED:BODY_ALREADY_OWNED").length,1);\n assert.equal([a,b].filter(x=>x.startsWith("ERROR:")).length,0);
+ assert.equal([a,b].filter(x=>x==="BLOCKED:BODY_ALREADY_OWNED").length,1);
+ assert.equal([a,b].filter(x=>x.startsWith("ERROR:")).length,0);
  const saved=new DurableBodyLock(file).read();
  assert.ok(saved.ownerId==="proc-A"||saved.ownerId==="proc-B");
 });
