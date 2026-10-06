@@ -30,5 +30,5 @@ export function assembleGuardianSessionCapabilities({
     });
   };
 
-  return Object.freeze({send:sendCapability.send,capture});
+  return Object.freeze({send:sendCapability.send,capture,resumePendingResult:returnCapability.resumePending});
 }
