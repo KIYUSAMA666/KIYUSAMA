@@ -34,3 +34,21 @@ test("final session blocks SEND when PRE-SEND expected user turn differs",async(
  let sends=0;const adapter=assembleFinalSessionAdapter({bodyId:"B",ownerId:"O",workId:"W",expectedUserTurnId:"U",lock,ledger,rawSend:async()=>{sends++},rawResultCommit:async()=>{},observe:()=>null,compose:()=>null,captureReturn:async()=>({})});
  await assert.rejects(()=>adapter.send("p"),/PRE_SEND_USER_TURN_MISMATCH/);assert.equal(sends,0);
 });
+
+test("pending external result survives restart and clears only after one successful resume",async()=>{
+ const d=fs.mkdtempSync(path.join(os.tmpdir(),"guardian-pending-result-"));
+ const lock=new DurableBodyLock(path.join(d,"lock.json")); const ledger=new DurableLedger(path.join(d,"ledger.json"));
+ const coord={bodyId:"BODY-P",ownerId:"OWNER-P",workId:"WORK-P",expectedUserTurnId:"USER-P"};
+ lock.acquire({bodyId:coord.bodyId,ownerId:coord.ownerId});
+ ledger.record(coord.bodyId,{state:GuardianState.SENDING,...coord,preSendCommitted:true,sendStarted:true,resultCommitted:false});
+ let external=0;
+ const first=assembleFinalSessionAdapter({...coord,lock,ledger,observe:()=>null,compose:()=>null,rawSend:async()=>{},rawResultCommit:async()=>{external++;throw new Error("SIMULATED_CRASH_BEFORE_EXTERNAL_CONFIRM")},captureReturn:async()=>({causalUserTurnId:coord.expectedUserTurnId,assistantTurnId:"ASSISTANT-P",streamEnded:true,contentStable:true,sameBody:true})});
+ await assert.rejects(()=>first.capture(),/SIMULATED_CRASH/);
+ let saved=new DurableLedger(ledger.file).get(coord.bodyId);
+ assert.equal(saved.state,GuardianState.RESULT_COMMITTED); assert.equal(saved.resultCommitted,true); assert.equal(saved.externalResultPending,true);
+ const restarted=assembleFinalSessionAdapter({...coord,lock,ledger,observe:()=>null,compose:()=>null,rawSend:async()=>{},rawResultCommit:async()=>{external++;return "CONFIRMED"},captureReturn:async()=>({})});
+ assert.equal(await restarted.resumePendingResult(coord.bodyId),"CONFIRMED");
+ saved=new DurableLedger(ledger.file).get(coord.bodyId);
+ assert.equal(saved.externalResultPending,false); assert.equal(saved.externalResultCompleted,true); assert.equal(external,2);
+ await assert.rejects(()=>restarted.resumePendingResult(coord.bodyId),/NO_PENDING_EXTERNAL_RESULT/); assert.equal(external,2);
+});
