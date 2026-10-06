@@ -62,11 +62,29 @@ export class DurableLedger {
   record(bodyId, entry) {
     fs.mkdirSync(path.dirname(this.lockFile), { recursive: true });
     let lockFd;
+    const acquireUpdateLock=()=>{
+      const fd=fs.openSync(this.lockFile,"wx",0o600);
+      fs.writeFileSync(fd,JSON.stringify({pid:process.pid,createdAt:new Date().toISOString()})+"\n","utf8");
+      fs.fsyncSync(fd);
+      return fd;
+    };
     try {
-      lockFd=fs.openSync(this.lockFile,"wx",0o600);
+      lockFd=acquireUpdateLock();
     } catch (e) {
-      if (e.code==="EEXIST") throw new Error("LEDGER_UPDATE_BUSY");
-      throw e;
+      if (e.code!=="EEXIST") throw e;
+      let stale=false;
+      try {
+        const meta=JSON.parse(fs.readFileSync(this.lockFile,"utf8"));
+        stale=!processAlive(meta.pid);
+      } catch { stale=false; }
+      if (!stale) throw new Error("LEDGER_UPDATE_BUSY");
+      try { fs.unlinkSync(this.lockFile); }
+      catch (unlinkError) { if (unlinkError.code!=="ENOENT") throw unlinkError; }
+      try { lockFd=acquireUpdateLock(); }
+      catch (retryError) {
+        if (retryError.code==="EEXIST") throw new Error("LEDGER_UPDATE_BUSY");
+        throw retryError;
+      }
     }
     try {
       const data=this.read();
