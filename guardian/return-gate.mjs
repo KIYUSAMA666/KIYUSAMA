@@ -41,6 +41,7 @@ export function commitReturnResult(args) {
     ...current,
     state: GuardianState.RESULT_COMMITTED,
     resultCommitted: true,
+    externalResultPending: true,
     expectedUserTurnId: proof.expectedUserTurnId,
     assistantTurnId: proof.assistantTurnId,
   });
@@ -48,6 +49,7 @@ export function commitReturnResult(args) {
   if (!saved || saved.seq !== written.seq ||
       saved.state !== GuardianState.RESULT_COMMITTED ||
       saved.resultCommitted !== true ||
+      saved.externalResultPending !== true ||
       saved.expectedUserTurnId !== proof.expectedUserTurnId ||
       saved.assistantTurnId !== proof.assistantTurnId)
     throw new ReturnGateError("RESULT_COMMIT_READBACK_FAILED");
