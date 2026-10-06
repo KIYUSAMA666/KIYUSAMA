@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 function atomicWriteJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -70,7 +71,7 @@ export class DurableLedger {
     let lockFd;
     const acquireUpdateLock=()=>{
       const fd=fs.openSync(this.lockFile,"wx",0o600);
-      fs.writeFileSync(fd,JSON.stringify({pid:process.pid,createdAt:new Date().toISOString()})+"\n","utf8");
+      fs.writeFileSync(fd,JSON.stringify({pid:process.pid,instanceId:randomUUID(),createdAt:new Date().toISOString()})+"\n","utf8");
       fs.fsyncSync(fd);
       return fd;
     };
