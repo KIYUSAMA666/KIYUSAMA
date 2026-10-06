@@ -56,6 +56,12 @@ export class DurableBodyLock {
   }
 }
 
+function processAlive(pid) {
+  if (!Number.isInteger(pid) || pid<=0) return false;
+  try { process.kill(pid,0); return true; }
+  catch (e) { return e.code==="EPERM"; }
+}
+
 export class DurableLedger {
   constructor(file) { this.file=file; this.lockFile=file+".lock"; }
   read() { return readJson(this.file,{version:1,bodies:{}}); }
