@@ -17,7 +17,7 @@ export function assembleFinalSessionAdapter({
   capture:async(...args)=>session.capture(await captureReturn(...args)),
  });
  assertNoRawSendSurface(adapter);
- return Object.freeze(adapter);
+ return Object.freeze({...adapter,resumePendingResult:session.resumePendingResult});
 }
 
 export function rejectSeparatedCapabilityAssembly(args={}) {
