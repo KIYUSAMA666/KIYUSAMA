@@ -60,18 +60,17 @@ test("two processes racing for one BODY produce exactly one owner",async()=>{
 });
 
 test("concurrent ledger updates never lose a committed body entry",async()=>{
- const file=temp("ledger.json");
+ const file=temp("ledger.json"); const barrier=file+".barrier";
  const moduleUrl=new URL("./durable-core.mjs",import.meta.url).href;
- const script=`import {DurableLedger} from ${JSON.stringify(moduleUrl)};const [file,body]=process.argv.slice(1);try{const r=new DurableLedger(file).record(body,{state:"LOCKED"});process.stdout.write("COMMITTED:"+body+":"+r.seq)}catch(e){if(e.message==="LEDGER_UPDATE_BUSY"){process.stdout.write("BUSY")}else{process.stdout.write("ERROR:"+e.name+":"+e.message);process.exitCode=2}}`;
- const run=body=>new Promise((resolve,reject)=>{const p=spawn(process.execPath,["--input-type=module","-e",script,file,body]);let out="";p.stdout.on("data",d=>out+=d);p.on("error",reject);p.on("close",code=>resolve({out,code}));});
- const [a,b]=await Promise.all([run("SORA_A"),run("SORA_B")]);
- assert.equal([a,b].filter(x=>x.out.startsWith("ERROR:")).length,0);
- assert.equal([a,b].filter(x=>x.out.startsWith("COMMITTED:")).length,1);
- assert.equal([a,b].filter(x=>x.out==="BUSY").length,1);
- const saved=new DurableLedger(file).read();
- const committed=[a,b].find(x=>x.out.startsWith("COMMITTED:")).out.split(":")[1];
- assert.ok(saved.bodies[committed]);
- assert.equal(Object.keys(saved.bodies).length,1);
+ const holderScript=`import fs from "node:fs";import {DurableLedger} from ${JSON.stringify(moduleUrl)};const [file,barrier]=process.argv.slice(1);try{const r=new DurableLedger(file,{afterUpdateLockAcquired:()=>{fs.writeFileSync(barrier,"HELD");const until=Date.now()+400;while(Date.now()<until){}}}).record("SORA_A",{state:"LOCKED"});process.stdout.write("COMMITTED:SORA_A:"+r.seq)}catch(e){process.stdout.write("ERROR:"+e.name+":"+e.message);process.exitCode=2}`;
+ const contenderScript=`import {DurableLedger} from ${JSON.stringify(moduleUrl)};const file=process.argv[1];try{new DurableLedger(file).record("SORA_B",{state:"LOCKED"});process.stdout.write("COMMITTED:SORA_B")}catch(e){if(e.message==="LEDGER_UPDATE_BUSY"){process.stdout.write("BUSY")}else{process.stdout.write("ERROR:"+e.name+":"+e.message);process.exitCode=2}}`;
+ const run=(script,args)=>new Promise((resolve,reject)=>{const p=spawn(process.execPath,["--input-type=module","-e",script,...args]);let out="";p.stdout.on("data",d=>out+=d);p.on("error",reject);p.on("close",code=>resolve({out,code}));});
+ const holder=run(holderScript,[file,barrier]); const deadline=Date.now()+2000;
+ while(!fs.existsSync(barrier)){if(Date.now()>deadline)throw new Error("BARRIER_TIMEOUT");await new Promise(r=>setTimeout(r,5));}
+ const contender=await run(contenderScript,[file]); const first=await holder;
+ assert.equal(first.out.startsWith("COMMITTED:SORA_A:"),true); assert.equal(contender.out,"BUSY");
+ assert.equal(first.code,0); assert.equal(contender.code,0);
+ const saved=new DurableLedger(file).read(); assert.ok(saved.bodies.SORA_A); assert.equal(saved.bodies.SORA_B,undefined); assert.equal(Object.keys(saved.bodies).length,1);
 });
 
 test("ledger reclaims update lock left by a dead process",async()=>{
