@@ -78,14 +78,26 @@ export class DurableLedger {
       lockFd=acquireUpdateLock();
     } catch (e) {
       if (e.code!=="EEXIST") throw e;
-      let stale=false;
+      let staleMeta=null;
       try {
         const meta=JSON.parse(fs.readFileSync(this.lockFile,"utf8"));
-        stale=!processAlive(meta.pid);
-      } catch { stale=false; }
-      if (!stale) throw new Error("LEDGER_UPDATE_BUSY");
-      try { fs.unlinkSync(this.lockFile); }
-      catch (unlinkError) { if (unlinkError.code!=="ENOENT") throw unlinkError; }
+        if (!meta.instanceId || processAlive(meta.pid)) throw new Error("LEDGER_UPDATE_BUSY");
+        staleMeta=meta;
+      } catch (readError) {
+        if (readError.message==="LEDGER_UPDATE_BUSY") throw readError;
+        throw new Error("LEDGER_UPDATE_BUSY");
+      }
+      try {
+        const currentMeta=JSON.parse(fs.readFileSync(this.lockFile,"utf8"));
+        if (currentMeta.instanceId!==staleMeta.instanceId ||
+            currentMeta.pid!==staleMeta.pid ||
+            currentMeta.createdAt!==staleMeta.createdAt)
+          throw new Error("LEDGER_UPDATE_BUSY");
+        fs.unlinkSync(this.lockFile);
+      } catch (unlinkError) {
+        if (unlinkError.message==="LEDGER_UPDATE_BUSY") throw unlinkError;
+        throw new Error("LEDGER_UPDATE_BUSY");
+      }
       try { lockFd=acquireUpdateLock(); }
       catch (retryError) {
         if (retryError.code==="EEXIST") throw new Error("LEDGER_UPDATE_BUSY");
