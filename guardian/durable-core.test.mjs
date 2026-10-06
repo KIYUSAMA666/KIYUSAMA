@@ -78,7 +78,7 @@ test("ledger reclaims update lock left by a dead process",async()=>{
  const file=temp("ledger.json");
  const lockFile=file+".lock";
  const child=spawn(process.execPath,["--input-type=module","-e",
-   "import fs from 'node:fs';const f=process.argv[1];fs.writeFileSync(f,JSON.stringify({pid:process.pid,createdAt:new Date().toISOString()})+'\\n');process.stdout.write(String(process.pid));setInterval(()=>{},1000);",
+   "import fs from 'node:fs';const f=process.argv[1];fs.writeFileSync(f,JSON.stringify({pid:process.pid,instanceId:'dead-instance',createdAt:new Date().toISOString()})+'\\n');process.stdout.write(String(process.pid));setInterval(()=>{},1000);",
    lockFile]);
  await new Promise((resolve,reject)=>{child.stdout.once("data",()=>resolve());child.once("error",reject);});
  child.kill("SIGKILL");
