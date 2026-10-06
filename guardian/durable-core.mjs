@@ -106,6 +106,7 @@ export class DurableLedger {
       }
     }
     try {
+      this.afterUpdateLockAcquired?.();
       const data=this.read();
       const previous=data.bodies[bodyId] ?? null;
       const seq=(previous?.seq ?? 0)+1;
