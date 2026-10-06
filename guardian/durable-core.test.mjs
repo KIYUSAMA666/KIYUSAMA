@@ -73,3 +73,19 @@ test("concurrent ledger updates never lose a committed body entry",async()=>{
  assert.ok(saved.bodies[committed]);
  assert.equal(Object.keys(saved.bodies).length,1);
 });
+
+test("ledger reclaims update lock left by a dead process",async()=>{
+ const file=temp("ledger.json");
+ const lockFile=file+".lock";
+ const child=spawn(process.execPath,["--input-type=module","-e",
+   "import fs from 'node:fs';const f=process.argv[1];fs.writeFileSync(f,JSON.stringify({pid:process.pid,createdAt:new Date().toISOString()})+'\\n');process.stdout.write(String(process.pid));setInterval(()=>{},1000);",
+   lockFile]);
+ await new Promise((resolve,reject)=>{child.stdout.once("data",()=>resolve());child.once("error",reject);});
+ child.kill("SIGKILL");
+ await new Promise(resolve=>child.once("close",resolve));
+ const ledger=new DurableLedger(file);
+ const saved=ledger.record("SORA_RECOVERY",{state:"LOCKED"});
+ assert.equal(saved.state,"LOCKED");
+ assert.equal(ledger.get("SORA_RECOVERY").seq,1);
+ assert.equal(fs.existsSync(lockFile),false);
+});
