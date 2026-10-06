@@ -64,7 +64,7 @@ function processAlive(pid) {
 }
 
 export class DurableLedger {
-  constructor(file) { this.file=file; this.lockFile=file+".lock"; }
+  constructor(file, { afterUpdateLockAcquired=null }={}) { this.file=file; this.lockFile=file+".lock"; this.afterUpdateLockAcquired=afterUpdateLockAcquired; }
   read() { return readJson(this.file,{version:1,bodies:{}}); }
   record(bodyId, entry) {
     fs.mkdirSync(path.dirname(this.lockFile), { recursive: true });
