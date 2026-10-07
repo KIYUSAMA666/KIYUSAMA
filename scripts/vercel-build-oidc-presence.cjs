@@ -26,7 +26,7 @@ console.log('KIYUSAMA_BUILD_PROJECT_ID_PRESENT=' + (process.env.VERCEL_PROJECT_I
     console.log('KIYUSAMA_PREFLIGHT=SKIPPED');
     return;
   }
-  const origin = 'https://kiyusama-os-write-test-qdthq87be-masa1234k-2475s-projects.vercel.app';
+  const origin = 'https://kiyusama-os-write-test-60e5aukms-masa1234k-2475s-projects.vercel.app';
   for (const path of ['/api/oidc-probe', '/api/trusted-self-preflight', '/api/github-app-preflight-v2']) {
     try {
       const r = await fetch(origin + path, {
@@ -37,7 +37,7 @@ console.log('KIYUSAMA_BUILD_PROJECT_ID_PRESENT=' + (process.env.VERCEL_PROJECT_I
       const raw = await r.text();
       let stage = 'NON_JSON';
       try { const parsed = JSON.parse(raw); stage = typeof parsed.stage === 'string' && /^[A-Z0-9_]{1,70}$/.test(parsed.stage) ? parsed.stage : 'NO_SAFE_STAGE'; } catch (_) {}
-      console.log('KIYUSAMA_PREFLIGHT_PATH=' + path + ' HTTP=' + r.status + ' STAGE=' + stage + ' LOCATION_HOST=' +
+      console.log('KIYUSAMA_PREFLIGHT_PATH=' + path + ' HTTP=' + r.status + ' STAGE=' + stage + ' FUNCTION_MARKER=' + (r.headers.get('x-kiyusama-layer') === 'FUNCTION') + ' LOCATION_HOST=' +
         (r.headers.get('location') ? new URL(r.headers.get('location'), origin).host : 'NONE'));
     } catch (_) {
       console.log('KIYUSAMA_PREFLIGHT_PATH=' + path + ' HTTP=NETWORK_ERROR');
