@@ -1,7 +1,7 @@
 module.exports = async function handler(req,res) {
   try {
     const audience='https://zdypjilutgxjsneultqj.supabase.co/functions/v1/execution-github-egress-gateway-v1';
-    const token=req.headers['x-vercel-oidc-token'] || process.env.VERCEL_OIDC_TOKEN;
+    const token=process.env.VERCEL_OIDC_TOKEN;
     if(!token) return res.status(401).json({ok:false,stage:'OIDC_MISSING'});
     const r=await fetch(audience+'?preflight=github-app-auth-v1',{method:'POST',headers:{Authorization:'Bearer '+token}});
     const body=await r.text();
