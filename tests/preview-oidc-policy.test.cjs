@@ -1,0 +1,11 @@
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const {verifyPreviewToken,EXPECTED,AUDIENCE}=require('../lib/preview-oidc-policy');
+const good={...EXPECTED};
+const verified=payload=>async(_token,_keys,options)=>{assert.equal(options.audience,AUDIENCE);return {payload};};
+test('preview identity passes only verified exact claims',async()=>assert.equal((await verifyPreviewToken('test',verified(good))).ok,true));
+test('development subject and environment denied',async()=>assert.equal((await verifyPreviewToken('test',verified({...good,sub:good.sub.replace('preview','development'),environment:'development'}))).ok,false));
+test('other project denied',async()=>assert.equal((await verifyPreviewToken('test',verified({...good,project_id:'prj_other'}))).ok,false));
+test('bad audience denied by cryptographic verifier',async()=>{const reject=async()=>{const e=new Error('aud');e.code='ERR_JWT_CLAIM_VALIDATION_FAILED';throw e;};assert.equal((await verifyPreviewToken('test',reject)).ok,false)});
+test('expired token denied',async()=>{const reject=async()=>{const e=new Error('expired');e.code='ERR_JWT_EXPIRED';throw e;};assert.equal((await verifyPreviewToken('test',reject)).code,'TOKEN_EXPIRED')});
+test('missing token denied',async()=>assert.equal((await verifyPreviewToken('')).ok,false));
