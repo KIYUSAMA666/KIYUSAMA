@@ -6,12 +6,39 @@ on:
     paths:
       - ".github/workflows/codex-bridge-probe.yml"
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   probe:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
+      - name: Diagnose Vercel Trusted Source with GitHub OIDC
+        shell: bash
+        run: |
+          set -euo pipefail
+          OIDC_JSON="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}")"
+          OIDC_TOKEN="$(printf '%s' "$OIDC_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
+          echo "::add-mask::$OIDC_TOKEN"
+
+          TARGET="https://kiyusama-os-write-test-pj01bsdxt-masa1234k-2475s-projects.vercel.app/api/github-app-preflight-v2"
+          HTTP_CODE="$(curl --silent --show-error \
+            --output /tmp/vercel-trusted-source-body.txt \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header "x-vercel-trusted-oidc-idp-token: $OIDC_TOKEN" \
+            --header "content-type: application/json" \
+            "$TARGET" || true)"
+
+          echo "VERCEL_TRUSTED_SOURCE_HTTP=$HTTP_CODE"
+          echo "VERCEL_TRUSTED_SOURCE_BODY_BEGIN"
+          cat /tmp/vercel-trusted-source-body.txt || true
+          echo
+          echo "VERCEL_TRUSTED_SOURCE_BODY_END"
+
       - name: Check whether OPENAI_API_KEY is configured
         id: keycheck
         shell: bash
