@@ -1,5 +1,5 @@
 {
-  "buildCommand": "node scripts/vercel-build-oidc-presence.cjs && mkdir -p public && printf 'build-probe\\n' > public/build-probe.txt",
+  "buildCommand": "node --test tests/preview-oidc-policy.test.cjs && node scripts/vercel-build-oidc-presence.cjs && mkdir -p public && printf 'build-probe\\n' > public/build-probe.txt",
   "rewrites": [
     {
       "source": "/.well-known/oauth-authorization-server",
