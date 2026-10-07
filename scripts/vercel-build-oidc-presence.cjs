@@ -17,3 +17,27 @@ console.log('KIYUSAMA_BUILD_PROJECT_ID_PRESENT=' + (process.env.VERCEL_PROJECT_I
     console.log('KIYUSAMA_TRUST_MARKER=' + marker);
   } catch(e) { console.log('KIYUSAMA_TRUST_HTTP=NETWORK_ERROR'); }
 })();
+
+
+// Isolated Preview-to-Preview preflight probe. Never log tokens or response bodies.
+(async () => {
+  const token = process.env.VERCEL_OIDC_TOKEN;
+  if (!token || process.env.VERCEL_ENV !== 'preview') {
+    console.log('KIYUSAMA_PREFLIGHT=SKIPPED');
+    return;
+  }
+  const origin = 'https://kiyusama-os-write-test-5g2a4rc92-masa1234k-2475s-projects.vercel.app';
+  for (const path of ['/api/oidc-probe', '/api/trusted-self-preflight', '/api/github-app-preflight-v2']) {
+    try {
+      const r = await fetch(origin + path, {
+        method: 'GET', redirect: 'manual',
+        headers: {'x-vercel-trusted-oidc-idp-token': token},
+        signal: AbortSignal.timeout(10000)
+      });
+      console.log('KIYUSAMA_PREFLIGHT_PATH=' + path + ' HTTP=' + r.status + ' LOCATION_HOST=' +
+        (r.headers.get('location') ? new URL(r.headers.get('location'), origin).host : 'NONE'));
+    } catch (_) {
+      console.log('KIYUSAMA_PREFLIGHT_PATH=' + path + ' HTTP=NETWORK_ERROR');
+    }
+  }
+})();
