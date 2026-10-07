@@ -1,0 +1,34 @@
+name: Supabase Gateway Config Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: latest
+
+      - name: Verify bootstrap secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          echo "SUPABASE_ACCESS_TOKEN_PRESENT=PASS"
+
+      - name: Deploy gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase functions deploy execution-github-egress-gateway-v1 \
+            --project-ref zdypjilutgxjsneultqj \
+            --no-verify-jwt
