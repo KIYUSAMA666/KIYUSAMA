@@ -26,7 +26,7 @@ console.log('KIYUSAMA_BUILD_PROJECT_ID_PRESENT=' + (process.env.VERCEL_PROJECT_I
     console.log('KIYUSAMA_PREFLIGHT=SKIPPED');
     return;
   }
-  const origin = 'https://kiyusama-os-write-test-alkdqrkh0-masa1234k-2475s-projects.vercel.app';
+  const origin = 'https://kiyusama-os-write-test-b72k67s2u-masa1234k-2475s-projects.vercel.app';
   for (const path of ['/api/oidc-probe', '/api/trusted-self-preflight', '/api/github-app-preflight-v2']) {
     try {
       const r = await fetch(origin + path, {
