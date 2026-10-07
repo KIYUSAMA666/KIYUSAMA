@@ -1,6 +1,7 @@
+const { getVercelOidcToken } = require('@vercel/oidc');
 module.exports = async function handler(req, res) {
   try {
-    const token = process.env.VERCEL_OIDC_TOKEN;
+    const token = await getVercelOidcToken();
     if (!token) return res.status(401).json({ ok: false, stage: 'TRUSTED_OIDC_MISSING' });
 
     const host = process.env.VERCEL_URL;
