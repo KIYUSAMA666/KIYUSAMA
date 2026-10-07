@@ -1,6 +1,7 @@
 {
   "private": true,
   "dependencies": {
-    "@vercel/oidc": "^3.0.0"
+    "@vercel/oidc": "^3.0.0",
+    "jose": "^5.9.6"
   }
 }
