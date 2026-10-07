@@ -34,7 +34,10 @@ console.log('KIYUSAMA_BUILD_PROJECT_ID_PRESENT=' + (process.env.VERCEL_PROJECT_I
         headers: {'x-vercel-trusted-oidc-idp-token': token},
         signal: AbortSignal.timeout(10000)
       });
-      console.log('KIYUSAMA_PREFLIGHT_PATH=' + path + ' HTTP=' + r.status + ' LOCATION_HOST=' +
+      const raw = await r.text();
+      let stage = 'NON_JSON';
+      try { const parsed = JSON.parse(raw); stage = typeof parsed.stage === 'string' && /^[A-Z0-9_]{1,70}$/.test(parsed.stage) ? parsed.stage : 'NO_SAFE_STAGE'; } catch (_) {}
+      console.log('KIYUSAMA_PREFLIGHT_PATH=' + path + ' HTTP=' + r.status + ' STAGE=' + stage + ' LOCATION_HOST=' +
         (r.headers.get('location') ? new URL(r.headers.get('location'), origin).host : 'NONE'));
     } catch (_) {
       console.log('KIYUSAMA_PREFLIGHT_PATH=' + path + ' HTTP=NETWORK_ERROR');
