@@ -1,9 +1,9 @@
 module.exports = async function handler(req, res) {
   try {
-    const token = req.headers['x-vercel-oidc-token'] || process.env.VERCEL_OIDC_TOKEN;
+    const token = process.env.VERCEL_OIDC_TOKEN;
     if (!token) return res.status(401).json({ ok: false, stage: 'TRUSTED_OIDC_MISSING' });
 
-    const host = req.headers.host;
+    const host = process.env.VERCEL_URL;
     if (!host) return res.status(400).json({ ok: false, stage: 'HOST_MISSING' });
 
     const target = `https://${host}/api/github-app-preflight-v2`;
@@ -11,7 +11,6 @@ module.exports = async function handler(req, res) {
       method: 'POST',
       headers: {
         'x-vercel-trusted-oidc-idp-token': token,
-        'x-vercel-oidc-token': token,
         'content-type': 'application/json'
       }
     });
