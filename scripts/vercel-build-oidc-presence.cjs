@@ -37,7 +37,7 @@ console.log('KIYUSAMA_BUILD_PROJECT_ID_PRESENT=' + (process.env.VERCEL_PROJECT_I
       const raw = await r.text();
       let stage = 'NON_JSON';
       try { const parsed = JSON.parse(raw); stage = typeof parsed.stage === 'string' && /^[A-Z0-9_]{1,70}$/.test(parsed.stage) ? parsed.stage : 'NO_SAFE_STAGE'; console.log('KIYUSAMA_SAFE_DIAG=' + path + ' parent_oidc=' + (parsed.oidc_obtained === true) + ' child_oidc=' + (parsed.child_oidc_obtained === true) + ' gateway_http=' + (Number.isInteger(parsed.gateway_http) ? parsed.gateway_http : 'NA') + ' gateway_code=' + (/^[A-Za-z0-9_-]{1,70}$/.test(parsed.gateway_code || '') ? parsed.gateway_code : 'UNKNOWN')); } catch (_) {}
-      console.log('KIYUSAMA_PREFLIGHT_PATH=' + path + ' HTTP=' + r.status + ' STAGE=' + stage + ' FUNCTION_MARKER=' + (r.headers.get('x-kiyusama-layer') === 'FUNCTION') + ' LOCATION_HOST=' +
+      console.log('KIYUSAMA_PREFLIGHT_PATH=' + path + ' HTTP=' + r.status + ' STAGE=' + stage + ' CLAIM_MISMATCH=' + (r.headers.get('x-kiyusama-claim-check') || 'NA') + ' FUNCTION_MARKER=' + (r.headers.get('x-kiyusama-layer') === 'FUNCTION') + ' LOCATION_HOST=' +
         (r.headers.get('location') ? new URL(r.headers.get('location'), origin).host : 'NONE'));
     } catch (_) {
       console.log('KIYUSAMA_PREFLIGHT_PATH=' + path + ' HTTP=NETWORK_ERROR');
