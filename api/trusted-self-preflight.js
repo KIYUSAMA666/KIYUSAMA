@@ -1,5 +1,6 @@
 const { getVercelOidcToken } = require('@vercel/oidc');
 module.exports = async function handler(req, res) {
+  res.setHeader('x-kiyusama-layer', 'FUNCTION');
   try {
     const token = await getVercelOidcToken();
     if (!token) return res.status(401).json({ ok: false, stage: 'TRUSTED_OIDC_MISSING' });
@@ -17,9 +18,9 @@ module.exports = async function handler(req, res) {
     });
 
     const body = await r.text();
-    res.status(r.status);
-    res.setHeader('content-type', r.headers.get('content-type') || 'application/json');
-    return res.send(body);
+    let safe = {};
+    try { const j = JSON.parse(body); safe = {gateway_http:j.gateway_http ?? null,gateway_code:j.gateway_code ?? 'UNKNOWN',upstream_layer:j.upstream_layer ?? 'UNKNOWN',child_oidc_obtained:j.oidc_obtained === true}; } catch (_) {}
+    return res.status(r.status).json({ok:r.ok,layer:'FUNCTION',oidc_obtained:true,self_call_http:r.status,child_marker:r.headers.get('x-kiyusama-layer') === 'FUNCTION',...safe});
   } catch (e) {
     return res.status(500).json({ ok: false, stage: 'SELF_PREFLIGHT_RUNTIME', error: String(e && e.message || e) });
   }
