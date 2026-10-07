@@ -1,4 +1,5 @@
 const { getVercelOidcToken } = require('@vercel/oidc');
+const { createRemoteJWKSet, jwtVerify } = require('jose');
 const gateway = 'https://zdypjilutgxjsneultqj.supabase.co/functions/v1/execution-github-egress-gateway-v1';
 module.exports = async function handler(req, res) {
   res.setHeader('x-kiyusama-layer', 'FUNCTION');
@@ -6,6 +7,17 @@ module.exports = async function handler(req, res) {
     const defaultToken = await getVercelOidcToken();
     const token = await getVercelOidcToken({ audience: gateway });
     const obtained = Boolean(token);
+    let cryptoCode = 'TOKEN_MISSING';
+    let cryptoPass = false;
+    if (obtained) {
+      const jwks = createRemoteJWKSet(new URL('https://oidc.vercel.com/.well-known/jwks'));
+      cryptoCode = 'JWT_VERIFY_BLOCK';
+      for (const issuer of ['https://oidc.vercel.com/masa1234k-2475s-projects','https://oidc.vercel.com']) {
+        try { await jwtVerify(token, jwks, {issuer, audience:gateway}); cryptoPass=true; cryptoCode='SIGNATURE_ISSUER_AUDIENCE_TIME_PASS'; break; }
+        catch (e) { const c=String(e && e.code || ''); if (c==='ERR_JWT_CLAIM_VALIDATION_FAILED') cryptoCode='CLAIM_VALIDATION_BLOCK'; else if(c==='ERR_JWT_EXPIRED') cryptoCode='TOKEN_EXPIRED'; else if(c==='ERR_JWS_SIGNATURE_VERIFICATION_FAILED') cryptoCode='SIGNATURE_BLOCK'; else if(c==='ERR_JWKS_NO_MATCHING_KEY') cryptoCode='JWKS_KEY_BLOCK'; else cryptoCode='JWT_VERIFY_BLOCK'; }
+      }
+    }
+    res.setHeader('x-kiyusama-crypto-check', cryptoCode);
     const payload = obtained ? JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) : {};
     const expectedSub = 'owner:masa1234k-2475s-projects:project:kiyusama-os-write-test:environment:development';
     const expectedIssuers = ['https://oidc.vercel.com/masa1234k-2475s-projects','https://oidc.vercel.com'];
@@ -22,6 +34,6 @@ module.exports = async function handler(req, res) {
         if (typeof candidate==='string' && /^[A-Za-z0-9_-]{1,70}$/.test(candidate)) safeCode=candidate;
       } catch (_) {}
     }
-    return res.status(r.status).json({ok:r.ok,oidc_obtained:true,default_oidc_obtained:Boolean(defaultToken),layer:'FUNCTION',upstream_layer:r.headers.get('x-vercel-id')?'VERCEL_OR_UNKNOWN':'GATEWAY_OR_UNKNOWN',gateway_http:r.status,gateway_code:safeCode,claim_matches:claimMatches,claim_signature_verified:false});
+    return res.status(r.status).json({ok:r.ok,oidc_obtained:true,default_oidc_obtained:Boolean(defaultToken),layer:'FUNCTION',upstream_layer:r.headers.get('x-vercel-id')?'VERCEL_OR_UNKNOWN':'GATEWAY_OR_UNKNOWN',gateway_http:r.status,gateway_code:safeCode,claim_matches:claimMatches,claim_signature_verified:cryptoPass,crypto_code:cryptoCode});
   } catch (_) { return res.status(500).json({ok:false,stage:'PREFLIGHT_RUNTIME',layer:'FUNCTION'}); }
 };
