@@ -1,5 +1,5 @@
 {
-  "buildCommand": "mkdir -p public",
+  "buildCommand": "mkdir -p public && printf 'build-probe\\n' > public/build-probe.txt",
   "rewrites": [
     {
       "source": "/.well-known/oauth-authorization-server",
