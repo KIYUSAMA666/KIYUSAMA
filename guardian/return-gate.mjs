@@ -25,7 +25,8 @@ export function verifyReturnPrerequisites({
 
   if (!expectedUserTurnId || entry.expectedUserTurnId !== expectedUserTurnId)
     deny("LEDGER_USER_TURN_MISMATCH");
-  if (!expectedUserTurnId || causalUserTurnId !== expectedUserTurnId)
+  if (!expectedUserTurnId || entry.expectedUserTurnId !== expectedUserTurnId ||
+      causalUserTurnId !== entry.expectedUserTurnId)
     deny("CAUSAL_USER_TURN_MISMATCH");
   if (!assistantTurnId || assistantTurnId === expectedUserTurnId)
     deny("NEW_ASSISTANT_TURN_REQUIRED");
@@ -48,7 +49,7 @@ export function commitReturnResult(args) {
     assistantTurnId: proof.assistantTurnId,
   });
   const saved = args.ledger.get(args.bodyId);
-  if (!saved || saved.seq !== written.seq ||
+  if (!saved || saved.seq !== written.seq || saved.seq !== current.seq + 1 ||
       saved.state !== GuardianState.RESULT_COMMITTED ||
       saved.resultCommitted !== true ||
       saved.externalResultPending !== true ||
