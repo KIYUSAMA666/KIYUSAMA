@@ -41,20 +41,30 @@ jobs:
                   print(f"GITHUB_OIDC_CLAIM_{key.upper()}={claims[key]}")
           PY
 
-          TARGET="https://kiyusama-os-write-test-pj01bsdxt-masa1234k-2475s-projects.vercel.app/api/github-app-preflight-v2"
-          HTTP_CODE="$(curl --silent --show-error \
-            --output /tmp/vercel-trusted-source-body.txt \
+          TARGET="https://kiyusama-os-write-test-b6zjxcfy8-masa1234k-2475s-projects.vercel.app/api/github-app-preflight-v2"
+          # Capture only allowlisted response metadata. Never print token, cookie, or body.
+          HTTP_CODE="$(curl --silent --show-error --max-redirs 0 \
+            --dump-header /tmp/vercel-response-headers.txt \
+            --output /dev/null \
             --write-out '%{http_code}' \
             --request POST \
             --header "x-vercel-trusted-oidc-idp-token: $OIDC_TOKEN" \
             --header "content-type: application/json" \
             "$TARGET" || true)"
-
           echo "VERCEL_TRUSTED_SOURCE_HTTP=$HTTP_CODE"
-          echo "VERCEL_TRUSTED_SOURCE_BODY_BEGIN"
-          cat /tmp/vercel-trusted-source-body.txt || true
-          echo
-          echo "VERCEL_TRUSTED_SOURCE_BODY_END"
+          python3 - <<'PY'
+          from pathlib import Path
+          for line in Path('/tmp/vercel-response-headers.txt').read_text(errors='replace').splitlines():
+              if ':' not in line: continue
+              key, value = line.split(':', 1)
+              if key.lower() in {'location', 'x-vercel-id', 'x-vercel-error', 'x-vercel-mitigated', 'www-authenticate'}:
+                  # Location may contain sensitive query params: emit host/path only.
+                  if key.lower() == 'location':
+                      from urllib.parse import urlsplit
+                      u = urlsplit(value.strip())
+                      value = (u.scheme + '://' + u.netloc + u.path) if u.scheme else u.path
+                  print('RESPONSE_' + key.upper().replace('-', '_') + '=' + value.strip())
+          PY
 
       - name: Check whether OPENAI_API_KEY is configured
         id: keycheck
