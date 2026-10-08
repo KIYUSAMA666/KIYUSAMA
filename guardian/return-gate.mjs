@@ -23,6 +23,8 @@ export function verifyReturnPrerequisites({
   if (entry.bodyId !== bodyId || entry.ownerId !== ownerId || entry.workId !== workId)
     deny("RETURN_COORDINATE_MISMATCH");
 
+  if (!expectedUserTurnId || entry.expectedUserTurnId !== expectedUserTurnId)
+    deny("LEDGER_USER_TURN_MISMATCH");
   if (!expectedUserTurnId || causalUserTurnId !== expectedUserTurnId)
     deny("CAUSAL_USER_TURN_MISMATCH");
   if (!assistantTurnId || assistantTurnId === expectedUserTurnId)
