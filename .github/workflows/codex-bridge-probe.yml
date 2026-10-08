@@ -42,9 +42,20 @@ jobs:
           PY
 
           TARGET="https://kiyusama-os-write-test-b6zjxcfy8-masa1234k-2475s-projects.vercel.app/api/github-app-preflight-v2"
-          # Capture only allowlisted response metadata. Never print token, cookie, or body.
+          # Stream response headers through an allowlist; never save raw headers/cookies.
           HTTP_CODE="$(curl --silent --show-error --max-redirs 0 \
-            --dump-header /tmp/vercel-response-headers.txt \
+            --dump-header >(python3 -c '
+import sys
+from urllib.parse import urlsplit
+for line in sys.stdin:
+    if ":" not in line: continue
+    key, value = line.split(":", 1)
+    if key.lower() not in {"location", "x-vercel-id", "x-vercel-error", "x-vercel-mitigated"}: continue
+    if key.lower() == "location":
+        u = urlsplit(value.strip())
+        value = (u.scheme + "://" + u.netloc + u.path) if u.scheme else u.path
+    print("RESPONSE_" + key.upper().replace("-", "_") + "=" + value.strip(), flush=True)
+') \
             --output /dev/null \
             --write-out '%{http_code}' \
             --request POST \
@@ -52,19 +63,6 @@ jobs:
             --header "content-type: application/json" \
             "$TARGET" || true)"
           echo "VERCEL_TRUSTED_SOURCE_HTTP=$HTTP_CODE"
-          python3 - <<'PY'
-          from pathlib import Path
-          for line in Path('/tmp/vercel-response-headers.txt').read_text(errors='replace').splitlines():
-              if ':' not in line: continue
-              key, value = line.split(':', 1)
-              if key.lower() in {'location', 'x-vercel-id', 'x-vercel-error', 'x-vercel-mitigated', 'www-authenticate'}:
-                  # Location may contain sensitive query params: emit host/path only.
-                  if key.lower() == 'location':
-                      from urllib.parse import urlsplit
-                      u = urlsplit(value.strip())
-                      value = (u.scheme + '://' + u.netloc + u.path) if u.scheme else u.path
-                  print('RESPONSE_' + key.upper().replace('-', '_') + '=' + value.strip())
-          PY
 
       - name: Check whether OPENAI_API_KEY is configured
         id: keycheck
