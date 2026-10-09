@@ -13,3 +13,12 @@ test('rejects incorrect checkpoint revision',()=>{
 test('rejects stale lease in returned checkpoint',()=>{
   assert.throws(()=>mapReservationCheckpoint({root_task_id:'900001',checkpoint_id:'checkpoint-2',checkpoint_revision:'2',checkpoint:{...checkpoint,leaseToken:'stale'}},expected),/RESERVATION_PROOF_INVALID/);
 });
+
+test('rejects unsafe revision overflow',()=>{
+  assert.throws(()=>mapReservationCheckpoint({root_task_id:'900001',checkpoint_id:'checkpoint-2',checkpoint_revision:'9007199254740992',checkpoint},{...expected,expectedRevision:Number.MAX_SAFE_INTEGER}),/RESERVATION_PROOF_INVALID/);
+});
+test('rejects incorrect body or user turn',()=>{
+  const row={root_task_id:'900001',checkpoint_id:'checkpoint-2',checkpoint_revision:'2',checkpoint};
+  assert.throws(()=>mapReservationCheckpoint(row,{...expected,bodyId:'WRONG_BODY'}),/RESERVATION_PROOF_INVALID/);
+  assert.throws(()=>mapReservationCheckpoint(row,{...expected,expectedUserTurnId:'WRONG_TURN'}),/RESERVATION_PROOF_INVALID/);
+});
