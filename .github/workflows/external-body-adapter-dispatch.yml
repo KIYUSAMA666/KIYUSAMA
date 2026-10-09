@@ -22,6 +22,7 @@ jobs:
           python - <<'PY'
           import os
           from playwright.sync_api import sync_playwright
+          from urllib.parse import urlsplit
           from external_body_browserless_profile import connect_saved_profile
           TARGET = "https://claude.ai/chat/b2ed0bb2-82f9-4d4e-8fe8-5626023086dc"
           token = os.environ.get("BROWSERLESS_API_KEY")
@@ -29,9 +30,16 @@ jobs:
               raise SystemExit("BROWSERLESS_API_KEY_MISSING")
           with sync_playwright() as p:
               browser, context, page = connect_saved_profile(p, token, profile="kira-external", headless=False)
-              page.goto(TARGET, wait_until="domcontentloaded", timeout=90000)
+              response = page.goto(TARGET, wait_until="domcontentloaded", timeout=90000)
               page.wait_for_timeout(15000)
               exact_url = page.url == TARGET
+              final = urlsplit(page.url)
+              host = (final.hostname or "").lower()
+              route_class = ("EXACT_CHAT" if exact_url else
+                             "CLAUDE_OTHER_ROUTE" if host in ("claude.ai", "www.claude.ai") else
+                             "EXTERNAL_REDIRECT" if host else "UNKNOWN_ROUTE")
+              print(f"ROUTE_CLASS={route_class}")
+              print(f"HTTP_STATUS={response.status if response else 'NO_RESPONSE'}")
               composer = page.locator('[data-testid="chat-input"]')
               composer_visible = composer.count() == 1 and composer.is_visible()
               print(f"EXACT_TARGET={exact_url}")
@@ -46,4 +54,6 @@ jobs:
               print("READ_ONLY=true")
               print("SEND_COUNT=0")
               browser.close()
+              if not exact_url or not composer_visible:
+                  raise SystemExit("EXACT_CHAT_NOT_READY")
           PY
