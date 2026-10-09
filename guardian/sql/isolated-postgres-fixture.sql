@@ -35,4 +35,4 @@ end $$;
 insert into common_memory.task_root_control_v1 values(900001,null,'ci-owner','11111111-1111-4111-8111-111111111111',3,clock_timestamp()+interval '30 minutes');
 insert into common_memory.root_task_checkpoint_v1(root_task_id,checkpoint_id,checkpoint_revision,checkpoint)
 values(900001,'22222222-2222-4222-8222-222222222222',1,
-'{"bodyId":"SORA_03","workId":"ci-work","expectedUserTurnId":"ci-turn","ownerId":"ci-owner","state":"LOCKED","preSendCommitted":true,"sendStarted":false,"resultCommitted":false}');
+'{"bodyId":"SORA_03","workId":"ci-work","expectedUserTurnId":"ci-turn","ownerId":"ci-owner","leaseToken":"11111111-1111-4111-8111-111111111111","fenceEpoch":3,"state":"LOCKED","preSendCommitted":true,"sendStarted":false,"resultCommitted":false}');
