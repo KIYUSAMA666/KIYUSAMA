@@ -27,3 +27,8 @@ PC OFFで、既存のChatGPT SORA_03本人会話と外部Claude.ai KIRA本人会
 
 ## 施工方針
 既存Guardianを使い、まず認証・同一BODY確認のREAD ONLY cloud preflightを隔離環境で実証。失敗座標を固定してからSENDの可否を判断。認証秘密の抽出や本番送信は行わない。
+
+## 追加・実コード独立READ（2026-10-09）
+- zzzhouzhenzz/browser-cookie-jar/src/browser_cookie_jar/store.py: SessionStore.exists/load/save/apply はJSON storage_stateを読み書きし Playwright browser.new_context に渡す。login_flow は画面で人間がログインして成功判定後保存。Chrome Cookie DB直接読出しのimport_from_chromeもあるが、秘密抽出は採用しない。現状のsaveは通常のwrite_textであり、暗号化・原子的保存・0600権限をコード断片からは確認できない。**KIYUSAMA OSへの無改造採用は禁止**。利用時は認可済み正規ログイン、暗号化された秘密管理、ファイル権限、原子保存、期限切れ対処、本人BODY照合が必須。
+- Liggi/agent-ui-harness/src/protocol/derive.ts: deriveStatus は末尾からrun:end/run:error/turn:end等を評価。deriveProcessAliveは**turn:end（生存）とrun:end（死亡）を区別**。これはKeeperの「返信完了≠本人セッション停止」判断に転用可能。ただしClaude Code CLI内の意味であり、ChatGPT/Claude.aiサイトの生存証明ではない。
+- 実装上の次の独創: Keeperが「BODY返信終了」と「browser executor生存」を別々の事実として管理する。どちらか片方のみではNEXT_READYにしない。ログにcredentialやcookieを保存しない。
