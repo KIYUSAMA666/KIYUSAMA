@@ -1,0 +1,16 @@
+name: Guardian crash regression (expected red)
+on:
+  push:
+    branches:
+      - sora/support-return-crash-regression-20261009
+  workflow_dispatch:
+jobs:
+  crash-gap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify crash replay regression (expected FAIL until fixed)
+        run: node --test guardian/return-crash-regression.test.mjs
