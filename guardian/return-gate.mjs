@@ -47,7 +47,7 @@ export function commitReturnResult(args) {
     externalResultPending: true,
     expectedUserTurnId: proof.expectedUserTurnId,
     assistantTurnId: proof.assistantTurnId,
-  });
+  }, { expectedSeq: proof.seq });
   const saved = args.ledger.get(args.bodyId);
   if (!saved || saved.seq !== written.seq || saved.seq !== current.seq + 1 ||
       saved.state !== GuardianState.RESULT_COMMITTED ||
