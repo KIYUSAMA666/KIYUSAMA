@@ -14,4 +14,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test guardian/return-gate.test.mjs guardian/cloud-send-reservation.test.mjs guardian/sql/guardian-send-reserve.static.test.mjs guardian/postgres-reservation-proof.test.mjs guardian/keeper-wake-proof-gate.test.mjs guardian/keeper-event-machine.test.mjs guardian/keeper-runtime-liveness-gate.test.mjs
+      - run: node --test guardian/return-gate.test.mjs guardian/cloud-send-reservation.test.mjs guardian/sql/guardian-send-reserve.static.test.mjs guardian/postgres-reservation-proof.test.mjs guardian/keeper-wake-proof-gate.test.mjs guardian/keeper-event-machine.test.mjs guardian/keeper-runtime-liveness-gate.test.mjs guardian/external-kira-browserless-preflight-gate.test.mjs
