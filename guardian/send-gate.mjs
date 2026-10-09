@@ -49,7 +49,7 @@ export function commitSendStarted({ bodyId, ownerId, workId, expectedUserTurnId,
     preSendCommitted:true,
     sendStarted:true,
     resultCommitted:false,
-  });
+  }, { expectedSeq: verified.seq });
   const persisted=ledger.get(bodyId);
   if (!persisted || !written || persisted.seq!==written.seq || persisted.seq!==verified.seq+1 ||
       persisted.state!==GuardianState.SENDING || persisted.ownerId!==ownerId ||
