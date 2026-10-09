@@ -14,6 +14,7 @@ function rig() {
     state: GuardianState.SENDING,
     ownerId: "owner-A",
     workId: "work-1",
+    expectedUserTurnId: "user-turn-7",
     sendStarted: true,
     resultCommitted: false,
   });
