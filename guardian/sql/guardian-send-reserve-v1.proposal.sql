@@ -43,8 +43,9 @@ begin
     or prev.checkpoint->>'leaseToken' is distinct from p_lease_token::text
     or prev.checkpoint->>'fenceEpoch' is distinct from p_fence_epoch::text
     or prev.checkpoint->>'state' is distinct from 'LOCKED'
-    or prev.checkpoint->>'preSendCommitted' is distinct from 'true'
-    or prev.checkpoint->>'sendStarted' is distinct from 'false'
+    or prev.checkpoint->'preSendCommitted' is distinct from 'true'::jsonb
+    or prev.checkpoint->'sendStarted' is distinct from 'false'::jsonb
+    or prev.checkpoint->'resultCommitted' is distinct from 'false'::jsonb
  then raise exception 'GUARDIAN_PRE_SEND_REJECT'; end if;
  saved := common_memory.root_task_checkpoint_save_fenced_v1(
    p_root_task_id,p_expected_revision,p_checkpoint_id,
