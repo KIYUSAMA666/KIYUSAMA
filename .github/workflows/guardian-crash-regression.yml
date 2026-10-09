@@ -1,4 +1,4 @@
-name: Guardian crash regression (expected red)
+name: Guardian isolated regression
 on:
   push:
     branches:
@@ -12,5 +12,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify crash replay regression (expected FAIL until fixed)
-        run: node --test guardian/return-gate.test.mjs guardian/return-capability.test.mjs guardian/return-crash-regression.test.mjs guardian/return-before-effect-crash.test.mjs guardian/durable-ledger-cas.test.mjs guardian/return-gate-cas-race.test.mjs guardian/postgres-reservation-proof.test.mjs
+      - name: Verify isolated Guardian regression suite
+        run: node --test guardian/return-gate.test.mjs guardian/return-capability.test.mjs guardian/return-crash-regression.test.mjs guardian/return-before-effect-crash.test.mjs guardian/durable-ledger-cas.test.mjs guardian/return-gate-cas-race.test.mjs guardian/postgres-reservation-proof.test.mjs guardian/send-gate-cas-race.test.mjs
