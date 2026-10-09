@@ -49,6 +49,27 @@ jobs:
           test "$(psql -Atc 'select count(*) from common_memory.root_task_checkpoint_v1 where root_task_id=900001')" -eq 2
           test "$(psql -Atc "select checkpoint->>'sendStarted' from common_memory.root_task_checkpoint_v1 where root_task_id=900001 order by checkpoint_revision desc limit 1")" = true
           echo 'CONCURRENT_ONE_WINNER_PASS'
+      - name: Verify actual PostgreSQL returned row with JS proof mapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -Atc "select row_to_json(t) from (select root_task_id,checkpoint_id,checkpoint_revision,checkpoint from common_memory.root_task_checkpoint_v1 where root_task_id=900001 order by checkpoint_revision desc limit 1) t" > /tmp/guardian-reservation-row.json
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { mapReservationCheckpoint } from './guardian/postgres-reservation-proof.mjs';
+          const row = JSON.parse(readFileSync('/tmp/guardian-reservation-row.json','utf8'));
+          const expected = {
+            rootTaskId: 900001, checkpointId: row.checkpoint_id, expectedRevision: 1,
+            bodyId: 'SORA_03', workId: 'ci-work', expectedUserTurnId: 'ci-turn',
+            ownerId: 'ci-owner', leaseToken: '11111111-1111-4111-8111-111111111111', fenceEpoch: 3
+          };
+          const proof = mapReservationCheckpoint(row, expected);
+          assert.equal(proof.ok,true);
+          assert.equal(proof.revision,2);
+          assert.throws(()=>mapReservationCheckpoint({...row,checkpoint:{...row.checkpoint,leaseToken:'stale'}},expected),/RESERVATION_PROOF_INVALID/);
+          console.log('REAL_POSTGRES_ROW_MAPPER_PASS');
+          JS
       - name: Stale lease token rejected
         shell: bash
         run: |
