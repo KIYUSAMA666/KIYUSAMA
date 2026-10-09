@@ -1,7 +1,11 @@
 // Isolated PostgreSQL checkpoint mapper. No network or browser effects.
 export function mapReservationCheckpoint(row, expected) {
   const c = row?.checkpoint;
-  if (!c || row.root_task_id !== expected.rootTaskId ||
+  // PostgreSQL BIGINT may arrive as a decimal string (node-postgres int8).
+  const rootMatches = /^(0|[1-9][0-9]*)$/.test(String(row?.root_task_id)) &&
+    /^(0|[1-9][0-9]*)$/.test(String(expected?.rootTaskId)) &&
+    String(row.root_task_id) === String(expected.rootTaskId);
+  if (!c || !rootMatches ||
       row.checkpoint_id !== expected.checkpointId ||
       row.checkpoint_revision !== expected.expectedRevision + 1 ||
       c.bodyId !== expected.bodyId || c.workId !== expected.workId ||
