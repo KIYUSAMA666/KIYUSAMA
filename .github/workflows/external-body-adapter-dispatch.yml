@@ -83,6 +83,10 @@ jobs:
               security_signal = security_text_signal or security_frame_signal
               print(f"SECURITY_CHECK_SIGNAL={security_signal}")
               print(f"SECURITY_SIGNAL_SOURCE={'FRAME' if security_frame_signal else 'TEXT' if security_text_signal else 'NONE'}")
+              if security_signal:
+                  print("SECURITY_CHECK_DETECTED_STOP")
+                  browser.close()
+                  raise SystemExit("SECURITY_CHECK_REQUIRES_HUMAN")
               print(f"ROUTE_CLASS={route_class}")
               print(f"DESTINATION_CLASS={destination_class}")
               print(f"HTTP_STATUS={response.status if response else 'NO_RESPONSE'}")
