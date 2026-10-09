@@ -14,11 +14,11 @@ export function mapReservationCheckpoint(row, expected) {
   try {
     const current = asPgInt8(row.checkpoint_revision);
     const prior = asPgInt8(expected.expectedRevision);
-    revisionMatches = prior >= 0n && current === prior + 1n;
+    const taskIdMatches = asPgInt8(row.root_task_id) === asPgInt8(expected.rootTaskId);
+    revisionMatches = taskIdMatches && prior >= 0n && current === prior + 1n;
   } catch { throw new Error("RESERVATION_PROOF_INVALID"); }
   const c = row?.checkpoint;
-  if (!c || row.root_task_id !== expected.rootTaskId ||
-      row.checkpoint_id !== expected.checkpointId ||
+  if (!c || row.checkpoint_id !== expected.checkpointId ||
       !revisionMatches ||
       c.bodyId !== expected.bodyId || c.workId !== expected.workId ||
       c.expectedUserTurnId !== expected.expectedUserTurnId ||
