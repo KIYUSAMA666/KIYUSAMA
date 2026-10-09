@@ -63,6 +63,30 @@ jobs:
               print(f"EMAIL_INPUTS={page.locator('input[type=email]').count()}")
               print(f"OAUTH_GOOGLE_BUTTONS={page.get_by_role('button', name='Continue with Google').count()}")
               print(f"CLAUDE_APP_SHELL={page.locator('nav, [role=navigation]').count() > 0}")
+              # Conservative security-screen indicators. Detection is not proof of
+              # authentication state; never attempt to solve or bypass a challenge.
+              security_markers = (
+                  "Verify you are human",
+                  "Checking your browser",
+                  "Security check",
+                  "Additional verification required",
+                  "Verify your identity",
+              )
+              security_text_signal = any(
+                  page.get_by_text(marker, exact=False).count() > 0
+                  for marker in security_markers
+              )
+              security_frame_signal = any(
+                  "challenges.cloudflare.com" in (frame.url or "")
+                  for frame in page.frames
+              )
+              security_signal = security_text_signal or security_frame_signal
+              print(f"SECURITY_CHECK_SIGNAL={security_signal}")
+              print(f"SECURITY_SIGNAL_SOURCE={'FRAME' if security_frame_signal else 'TEXT' if security_text_signal else 'NONE'}")
+              if security_signal:
+                  print("SECURITY_CHECK_DETECTED_STOP")
+                  browser.close()
+                  raise SystemExit("SECURITY_CHECK_REQUIRES_HUMAN")
               print(f"ROUTE_CLASS={route_class}")
               print(f"DESTINATION_CLASS={destination_class}")
               print(f"HTTP_STATUS={response.status if response else 'NO_RESPONSE'}")
