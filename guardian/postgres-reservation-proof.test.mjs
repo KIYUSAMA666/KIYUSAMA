@@ -46,3 +46,24 @@ for (const [name,mutate] of [
     assert.throws(()=>mapReservationCheckpoint(row,expected),/RESERVATION_PROOF_INVALID/);
   });
 }
+
+test("reservation proof accepts PostgreSQL int8 revision serialized as decimal text",()=>{
+  const row=validRow(); row.checkpoint_revision="5";
+  const proof=mapReservationCheckpoint(row,{...expected,expectedRevision:"4"});
+  assert.equal(proof.ok,true);
+  assert.equal(proof.revision,"5");
+});
+test("reservation proof accepts a large exact int8 revision without Number precision loss",()=>{
+  const row=validRow(); row.checkpoint_revision="9007199254740994";
+  const proof=mapReservationCheckpoint(row,{...expected,expectedRevision:"9007199254740993"});
+  assert.equal(proof.ok,true);
+});
+for (const [label,value] of [
+  ["fractional",4.5],["unsafe numeric",9007199254740992],
+  ["decimal fraction","4.0"],["exponent","4e0"],["negative","-1"],
+  ["empty",""],["null",null]
+]) {
+  test("reservation proof rejects invalid expected revision "+label,()=>{
+    assert.throws(()=>mapReservationCheckpoint(validRow(),{...expected,expectedRevision:value}),/RESERVATION_PROOF_INVALID/);
+  });
+}
