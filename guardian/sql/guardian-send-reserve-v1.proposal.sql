@@ -40,6 +40,8 @@ begin
     or prev.checkpoint->>'workId' is distinct from p_work_id
     or prev.checkpoint->>'expectedUserTurnId' is distinct from p_expected_user_turn_id
     or prev.checkpoint->>'ownerId' is distinct from p_owner_id
+    or prev.checkpoint->>'leaseToken' is distinct from p_lease_token::text
+    or prev.checkpoint->>'fenceEpoch' is distinct from p_fence_epoch::text
     or prev.checkpoint->>'state' is distinct from 'LOCKED'
     or prev.checkpoint->>'preSendCommitted' is distinct from 'true'
     or prev.checkpoint->>'sendStarted' is distinct from 'false'
