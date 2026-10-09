@@ -30,7 +30,7 @@ test("CRASH GAP: external RESULT must not be repeated after ambiguous success", 
     };
     await assert.rejects(cap.commit(proof), /SIMULATED_CRASH_AFTER_EXTERNAL_SUCCESS/);
     assert.equal(ledger.get("SORA_01").externalResultPending, true);
-    await cap.resumePending("SORA_01");
+    await assert.rejects(cap.resumePending("SORA_01"), /EXTERNAL_RESULT_AMBIGUOUS_HOLD/);
     assert.equal(externalWrites, 1, "duplicate external RESULT after ambiguous success");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
