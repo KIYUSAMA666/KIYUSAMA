@@ -14,6 +14,8 @@ test("locks control row before checkpoint",()=>{
 test("rejects stale fence and revision",()=>{
   assert.match(sql,/ctl\.lease_token is distinct from p_lease_token/);
   assert.match(sql,/ctl\.fence_epoch is distinct from p_fence_epoch/);
+  assert.match(sql,/prev\.checkpoint->>\x27leaseToken\x27 is distinct from p_lease_token::text/);
+  assert.match(sql,/prev\.checkpoint->>\x27fenceEpoch\x27 is distinct from p_fence_epoch::text/);
   assert.match(sql,/ctl\.lease_expires_at <= clock_timestamp\(\)/);
   assert.match(sql,/prev\.checkpoint_revision <> p_expected_revision/);
 });
