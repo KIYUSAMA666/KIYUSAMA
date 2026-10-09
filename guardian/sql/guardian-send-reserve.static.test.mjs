@@ -21,7 +21,9 @@ test("rejects stale fence and revision",()=>{
 });
 test("requires pre-SEND false before transition",()=>{
   assert.match(sql,/prev\.checkpoint->>'state' is distinct from 'LOCKED'/);
-  assert.match(sql,/prev\.checkpoint->>'sendStarted' is distinct from 'false'/);
+  assert.match(sql,/prev\.checkpoint->'sendStarted' is distinct from 'false'::jsonb/);
+  assert.match(sql,/prev\.checkpoint->'preSendCommitted' is distinct from 'true'::jsonb/);
+  assert.match(sql,/prev\.checkpoint->'resultCommitted' is distinct from 'false'::jsonb/);
   assert.match(sql,/jsonb_build_object\('state','SENDING','sendStarted',true/);
 });
 test("uses fenced checkpoint writer",()=>{
