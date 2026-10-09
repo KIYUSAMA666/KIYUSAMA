@@ -25,9 +25,16 @@ async function completePending({ledger,bodyId,effectfulResultCommit,payload}) {
       current.expectedUserTurnId!==payload.saved.expectedUserTurnId ||
       current.assistantTurnId!==payload.saved.assistantTurnId)
     throw new ReturnCapabilityError("PENDING_RESULT_COORDINATE_MISMATCH");
+  if (current.externalResultAttempted===true) throw new ReturnCapabilityError("EXTERNAL_RESULT_AMBIGUOUS_HOLD");
+  // Durable attempt marker BEFORE effect. If a crash occurs after this point,
+  // never replay blindly; reconciliation with the external receiver is required.
+  const attempted=ledger.record(bodyId,{...current,externalResultAttempted:true});
+  const attemptReadback=ledger.get(bodyId);
+  if (!attemptReadback || attemptReadback.seq!==attempted.seq || attemptReadback.externalResultAttempted!==true)
+    throw new ReturnCapabilityError("RESULT_ATTEMPT_READBACK_FAILED");
   const result=await effectfulResultCommit(RETURN_TOKEN,payload);
   const latest=ledger.get(bodyId);
-  if (!latest || latest.seq!==current.seq || latest.externalResultPending!==true)
+  if (!latest || latest.seq!==attempted.seq || latest.externalResultPending!==true)
     throw new ReturnCapabilityError("PENDING_RESULT_CHANGED");
   ledger.record(bodyId,{...latest,externalResultPending:false,externalResultCompleted:true});
   return result;
