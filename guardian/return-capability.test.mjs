@@ -7,7 +7,7 @@ import { createGuardianReturnCapability,createEffectfulResultCommitPort,ReturnCa
 
 function rig(){
  const d=fs.mkdtempSync(path.join(os.tmpdir(),"guardian-retcap-")); const ledger=new DurableLedger(path.join(d,"ledger.json"));
- ledger.record("SORA_01",{state:GuardianState.SENDING,ownerId:"A",workId:"W",sendStarted:true,resultCommitted:false});
+ ledger.record("SORA_01",{state:GuardianState.SENDING,ownerId:"A",workId:"W",expectedUserTurnId:"u1",sendStarted:true,resultCommitted:false});
  return ledger;
 }
 function proof(){return {bodyId:"SORA_01",ownerId:"A",workId:"W",expectedUserTurnId:"u1",causalUserTurnId:"u1",assistantTurnId:"a2",streamEnded:true,contentStable:true,sameBody:true};}
