@@ -13,4 +13,4 @@ jobs:
         with:
           node-version: '22'
       - name: Verify crash replay regression (expected FAIL until fixed)
-        run: node --test guardian/return-gate.test.mjs guardian/return-capability.test.mjs guardian/return-crash-regression.test.mjs
+        run: node --test guardian/return-gate.test.mjs guardian/return-capability.test.mjs guardian/return-crash-regression.test.mjs guardian/return-before-effect-crash.test.mjs
