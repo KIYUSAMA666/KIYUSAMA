@@ -1,5 +1,6 @@
 -- ISOLATED PROPOSAL ONLY. Do not deploy without sandbox tests and privilege review.
 -- Guardian SEND_STARTED reservation, single PostgreSQL transaction.
+begin;
 create or replace function common_memory.guardian_send_reserve_v1(
  p_root_task_id bigint, p_expected_revision bigint, p_checkpoint_id uuid,
  p_body_id text, p_work_id text, p_expected_user_turn_id text,
@@ -51,4 +52,8 @@ begin
  );
  return saved;
 end $$;
--- No GRANT EXECUTE: privilege policy must be reviewed before deployment.
+-- PostgreSQL functions may be executable by PUBLIC by default. Close that grant
+-- in the SAME transaction as CREATE to avoid a visibility window.
+revoke all on function common_memory.guardian_send_reserve_v1(bigint,bigint,uuid,text,text,text,text,uuid,bigint) from public;
+-- Do not grant to anon/authenticated; a reviewed dedicated executor role is required.
+commit;
