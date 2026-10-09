@@ -66,7 +66,7 @@ function processAlive(pid) {
 export class DurableLedger {
   constructor(file, { afterUpdateLockAcquired=null }={}) { this.file=file; this.lockFile=file+".lock"; this.afterUpdateLockAcquired=afterUpdateLockAcquired; }
   read() { return readJson(this.file,{version:1,bodies:{}}); }
-  record(bodyId, entry) {
+  record(bodyId, entry, { expectedSeq }={}) {
     fs.mkdirSync(path.dirname(this.lockFile), { recursive: true });
     let lockFd;
     const acquireUpdateLock=()=>{
@@ -109,6 +109,10 @@ export class DurableLedger {
       this.afterUpdateLockAcquired?.();
       const data=this.read();
       const previous=data.bodies[bodyId] ?? null;
+      if (expectedSeq !== undefined && (previous?.seq ?? 0) !== expectedSeq)
+        throw new Error("LEDGER_CAS_CONFLICT");
+      if (previous?.externalResultAttempted === true && entry.externalResultAttempted !== true)
+        throw new Error("LEDGER_ATTEMPT_MARKER_REGRESSION");
       const seq=(previous?.seq ?? 0)+1;
       data.bodies[bodyId]={...entry,seq,bodyId,recordedAt:new Date().toISOString()};
       atomicWriteJson(this.file,data);
