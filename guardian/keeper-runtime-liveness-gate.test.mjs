@@ -1,0 +1,10 @@
+import test from "node:test";import assert from "node:assert/strict";import {evaluateKeeperContinuation as check} from "./keeper-runtime-liveness-gate.mjs";
+const expected={eventId:"e",actor:"SORA_03",conversationId:"original",executorId:"cloud-1"};
+const wakeProof={status:"WAKE_VERIFIED",eventId:"e",actor:"SORA_03",conversationId:"original"};
+const executor={executorId:"cloud-1",actor:"SORA_03",conversationId:"original",processAlive:true,sessionAuthenticated:true,existingBodyBound:true,observationSeq:5,lastReplySeq:4};
+test("verified reply and fresh live executor qualify",()=>assert.equal(check({wakeProof,executor,expected}).status,"CONTINUATION_ELIGIBLE"));
+test("reply completed but executor dead is HOLD",()=>assert.equal(check({wakeProof,executor:{...executor,processAlive:false},expected}).reason,"EXECUTOR_NOT_LIVE"));
+test("stale executor observation is HOLD",()=>assert.equal(check({wakeProof,executor:{...executor,observationSeq:3},expected}).reason,"LIVENESS_OBSERVATION_STALE"));
+test("wrong executor binding is HOLD",()=>assert.equal(check({wakeProof,executor:{...executor,conversationId:"new"},expected}).reason,"EXECUTOR_IDENTITY_UNPROVEN"));
+test("unauthenticated executor is HOLD",()=>assert.equal(check({wakeProof,executor:{...executor,sessionAuthenticated:false},expected}).reason,"EXECUTOR_NOT_LIVE"));
+test("queued event without actual BODY reply is HOLD",()=>assert.equal(check({wakeProof:{status:"QUEUED"},executor,expected}).reason,"BODY_REPLY_UNPROVEN"));
