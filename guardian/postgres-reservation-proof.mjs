@@ -7,7 +7,8 @@ export function mapReservationCheckpoint(row, expected) {
     String(row.root_task_id) === String(expected.rootTaskId);
   if (!c || !rootMatches ||
       row.checkpoint_id !== expected.checkpointId ||
-      !Number.isSafeInteger(expected.expectedRevision) ||
+      !Number.isSafeInteger(expected.expectedRevision) || expected.expectedRevision < 1 ||
+      !Number.isSafeInteger(expected.expectedRevision + 1) ||
       String(row.checkpoint_revision) !== String(expected.expectedRevision + 1) ||
       c.bodyId !== expected.bodyId || c.workId !== expected.workId ||
       c.expectedUserTurnId !== expected.expectedUserTurnId ||
