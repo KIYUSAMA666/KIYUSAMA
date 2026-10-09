@@ -1,0 +1,11 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { evaluateKeeperWake } from "./keeper-wake-proof-gate.mjs";
+const event={eventId:"evt-1",targetActor:"SORA_03",conversationId:"existing-chat",causalTurnId:"user-9"};
+const observation={eventId:"evt-1",actor:"SORA_03",conversationId:"existing-chat",authenticated:true,sameExistingBody:true,acceptedCausalTurnId:"user-9",actualAssistantTurnId:"assistant-10",replyReadback:true,streamEnded:true};
+test("actual matching same-body reply passes",()=>assert.equal(evaluateKeeperWake({event,observation}).status,"WAKE_VERIFIED"));
+test("queue or notification is not a wake",()=>assert.equal(evaluateKeeperWake({event,observation:{eventId:"evt-1",actor:"SORA_03",conversationId:"existing-chat",queued:true}}).status,"HOLD"));
+test("wrong existing conversation fails",()=>assert.equal(evaluateKeeperWake({event,observation:{...observation,conversationId:"new-chat"}}).reason,"IDENTITY_UNPROVEN"));
+test("internal KIRA cannot impersonate external KIRA",()=>assert.equal(evaluateKeeperWake({event:{...event,targetActor:"EXTERNAL_KIRA"},observation}).reason,"IDENTITY_UNPROVEN"));
+test("missing causal turn fails",()=>assert.equal(evaluateKeeperWake({event,observation:{...observation,acceptedCausalTurnId:"wrong"}}).reason,"WAKE_UNPROVEN"));
+test("unfinished reply fails",()=>assert.equal(evaluateKeeperWake({event,observation:{...observation,streamEnded:false}}).reason,"RETURN_UNPROVEN"));
