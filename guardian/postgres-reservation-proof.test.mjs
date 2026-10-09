@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { mapReservationCheckpoint } from "./postgres-reservation-proof.mjs";
 
 const expected = Object.freeze({
-  rootTaskId:"task-1",checkpointId:"checkpoint-1",expectedRevision:4,
+  rootTaskId:"101",checkpointId:"checkpoint-1",expectedRevision:4,
   bodyId:"SORA_03",workId:"work-1",expectedUserTurnId:"turn-1",
   ownerId:"owner-1",leaseToken:"lease-1",fenceEpoch:7,
 });
 function validRow() {
   return {
-    root_task_id:"task-1",checkpoint_id:"checkpoint-1",checkpoint_revision:5,
+    root_task_id:"101",checkpoint_id:"checkpoint-1",checkpoint_revision:5,
     checkpoint:{
       bodyId:"SORA_03",workId:"work-1",expectedUserTurnId:"turn-1",
       ownerId:"owner-1",leaseToken:"lease-1",fenceEpoch:7,
@@ -25,7 +25,7 @@ test("reservation proof accepts only matching committed checkpoint",()=>{
   assert.equal(Object.isFrozen(proof),true);
 });
 for (const [name,mutate] of [
-  ["root task mismatch",r=>r.root_task_id="other-task"],
+  ["root task mismatch",r=>r.root_task_id="102"],
   ["checkpoint mismatch",r=>r.checkpoint_id="other-checkpoint"],
   ["stale revision",r=>r.checkpoint_revision=4],
   ["future revision",r=>r.checkpoint_revision=6],
@@ -65,5 +65,20 @@ for (const [label,value] of [
 ]) {
   test("reservation proof rejects invalid expected revision "+label,()=>{
     assert.throws(()=>mapReservationCheckpoint(validRow(),{...expected,expectedRevision:value}),/RESERVATION_PROOF_INVALID/);
+  });
+}
+
+test("root task bigint accepts equivalent number and decimal string",()=>{
+  const row=validRow();row.root_task_id="101";
+  assert.equal(mapReservationCheckpoint(row,{...expected,rootTaskId:101}).ok,true);
+});
+test("root task bigint preserves >2^53 exact identity",()=>{
+  const row=validRow();row.root_task_id="9007199254740993";
+  assert.equal(mapReservationCheckpoint(row,{...expected,rootTaskId:"9007199254740993"}).ok,true);
+  assert.throws(()=>mapReservationCheckpoint(row,{...expected,rootTaskId:9007199254740993}),/RESERVATION_PROOF_INVALID/);
+});
+for(const invalid of ["0101","1e2",-1,101.5,null]){
+  test("root task rejects invalid representation "+String(invalid),()=>{
+    assert.throws(()=>mapReservationCheckpoint(validRow(),{...expected,rootTaskId:invalid}),/RESERVATION_PROOF_INVALID/);
   });
 }
