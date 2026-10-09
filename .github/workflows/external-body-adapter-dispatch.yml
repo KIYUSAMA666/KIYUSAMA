@@ -38,7 +38,24 @@ jobs:
               route_class = ("EXACT_CHAT" if exact_url else
                              "CLAUDE_OTHER_ROUTE" if host in ("claude.ai", "www.claude.ai") else
                              "EXTERNAL_REDIRECT" if host else "UNKNOWN_ROUTE")
+              # Classify the destination without exposing URL, query or page content.
+              route_path = final.path.rstrip("/").lower()
+              if exact_url:
+                  destination_class = "TARGET_CHAT"
+              elif route_path in ("", "/"):
+                  destination_class = "CLAUDE_HOME"
+              elif route_path.startswith(("/login", "/signin", "/sign-in", "/auth")):
+                  destination_class = "AUTH_ROUTE"
+              elif route_path.startswith(("/onboarding", "/welcome")):
+                  destination_class = "ONBOARDING_ROUTE"
+              elif route_path.startswith(("/chat/", "/project/")):
+                  destination_class = "OTHER_CONVERSATION"
+              elif route_path.startswith(("/new", "/chats", "/recents")):
+                  destination_class = "CHAT_LIST_OR_NEW"
+              else:
+                  destination_class = "OTHER_UNCLASSIFIED"
               print(f"ROUTE_CLASS={route_class}")
+              print(f"DESTINATION_CLASS={destination_class}")
               print(f"HTTP_STATUS={response.status if response else 'NO_RESPONSE'}")
               composer = page.locator('[data-testid="chat-input"]')
               composer_visible = composer.count() == 1 and composer.is_visible()
