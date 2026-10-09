@@ -1,0 +1,63 @@
+name: Guardian isolated PostgreSQL contention
+on:
+  push:
+    branches:
+      - sora/guardian-return-isolated-check-20261009
+  workflow_dispatch:
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: isolated_only
+          POSTGRES_DB: guardian_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: isolated_only
+      PGDATABASE: guardian_ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install psql client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Create isolated schema and proposal function
+        run: |
+          psql -v ON_ERROR_STOP=1 -f guardian/sql/isolated-postgres-fixture.sql
+          psql -v ON_ERROR_STOP=1 -f guardian/sql/guardian-send-reserve-v1.proposal.sql
+      - name: Competing reservations (one winner)
+        shell: bash
+        run: |
+          set -euo pipefail
+          call="select (common_memory.guardian_send_reserve_v1(900001,1,gen_random_uuid(),'SORA_03','ci-work','ci-turn','ci-owner','11111111-1111-4111-8111-111111111111',3)).checkpoint_revision;"
+          (psql -v ON_ERROR_STOP=1 -Atc "$call" > /tmp/attempt1.out 2>/tmp/attempt1.err && echo PASS > /tmp/attempt1.status || echo REJECT > /tmp/attempt1.status) &
+          p1=$!
+          (psql -v ON_ERROR_STOP=1 -Atc "$call" > /tmp/attempt2.out 2>/tmp/attempt2.err && echo PASS > /tmp/attempt2.status || echo REJECT > /tmp/attempt2.status) &
+          p2=$!
+          wait "$p1" "$p2"
+          test "$(grep -l '^PASS$' /tmp/attempt{1,2}.status | wc -l)" -eq 1
+          test "$(grep -l '^REJECT$' /tmp/attempt{1,2}.status | wc -l)" -eq 1
+          test "$(psql -Atc 'select count(*) from common_memory.root_task_checkpoint_v1 where root_task_id=900001')" -eq 2
+          test "$(psql -Atc "select checkpoint->>'sendStarted' from common_memory.root_task_checkpoint_v1 where root_task_id=900001 order by checkpoint_revision desc limit 1")" = true
+          echo 'CONCURRENT_ONE_WINNER_PASS'
+      - name: Stale lease token rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          if psql -v ON_ERROR_STOP=1 -c "select common_memory.guardian_send_reserve_v1(900001,2,gen_random_uuid(),'SORA_03','ci-work','ci-turn','ci-owner','99999999-9999-4999-8999-999999999999',3)" >/tmp/stale.out 2>/tmp/stale.err; then
+            echo 'STALE_TOKEN_ACCEPTED'; exit 1
+          fi
+          grep -q 'GUARDIAN_FENCE_REJECT' /tmp/stale.err
+          echo 'STALE_TOKEN_REJECT_PASS'
+      - name: PUBLIC execute revoked
+        run: |
+          test "$(psql -Atc "select has_function_privilege('public', 'common_memory.guardian_send_reserve_v1(bigint,bigint,uuid,text,text,text,text,uuid,bigint)', 'EXECUTE')")" = f
