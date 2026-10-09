@@ -7,7 +7,8 @@ export function mapReservationCheckpoint(row, expected) {
     String(row.root_task_id) === String(expected.rootTaskId);
   if (!c || !rootMatches ||
       row.checkpoint_id !== expected.checkpointId ||
-      row.checkpoint_revision !== expected.expectedRevision + 1 ||
+      !Number.isSafeInteger(expected.expectedRevision) ||
+      String(row.checkpoint_revision) !== String(expected.expectedRevision + 1) ||
       c.bodyId !== expected.bodyId || c.workId !== expected.workId ||
       c.expectedUserTurnId !== expected.expectedUserTurnId ||
       c.ownerId !== expected.ownerId || c.leaseToken !== expected.leaseToken ||
@@ -19,6 +20,6 @@ export function mapReservationCheckpoint(row, expected) {
     ok: true, state: c.state, sendStarted: c.sendStarted,
     bodyId: c.bodyId, workId: c.workId,
     expectedUserTurnId: c.expectedUserTurnId, ownerId: c.ownerId,
-    fenceEpoch: c.fenceEpoch, revision: row.checkpoint_revision
+    fenceEpoch: c.fenceEpoch, revision: expected.expectedRevision + 1
   });
 }
