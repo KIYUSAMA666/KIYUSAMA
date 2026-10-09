@@ -54,6 +54,15 @@ jobs:
                   destination_class = "CHAT_LIST_OR_NEW"
               else:
                   destination_class = "OTHER_UNCLASSIFIED"
+              # Privacy-safe shape only: never emit actual path, URL, query or identifiers.
+              segments = [s for s in final.path.split("/") if s]
+              print(f"PATH_SEGMENTS_BUCKET={'0' if not segments else '1' if len(segments)==1 else '2_PLUS'}")
+              print(f"QUERY_PRESENT={bool(final.query)}")
+              print(f"FRAGMENT_PRESENT={bool(final.fragment)}")
+              # Detect login affordances without exposing text or secrets.
+              print(f"EMAIL_INPUTS={page.locator('input[type=email]').count()}")
+              print(f"OAUTH_GOOGLE_BUTTONS={page.get_by_role('button', name='Continue with Google').count()}")
+              print(f"CLAUDE_APP_SHELL={page.locator('nav, [role=navigation]').count() > 0}")
               print(f"ROUTE_CLASS={route_class}")
               print(f"DESTINATION_CLASS={destination_class}")
               print(f"HTTP_STATUS={response.status if response else 'NO_RESPONSE'}")
