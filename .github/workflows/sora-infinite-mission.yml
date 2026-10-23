@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - 'SORA_INFINITE_MISSION.md'
-      - '.github/workflows/sora-infinite-mission.yml'
   # Primary continuation is self-dispatch. GitHub schedule is intentionally not used
   # because repository-wide schedule delivery has shown multi-hour gaps.
   workflow_dispatch:
@@ -125,27 +124,49 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BRIDGE: https://zdypjilutgxjsneultqj.supabase.co/functions/v1/open-room-github-oidc-probe-v1
+          SORA03_CANONICAL_ADAPTER_READY: ${{ vars.SORA03_CANONICAL_ADAPTER_READY }}
         run: |
           set -euo pipefail
           OIDC_JSON="$(curl --fail-with-body -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=kiyusama-open-room")"
           export OIDC_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$OIDC_JSON")"
           WORK_JSON="$(curl --fail-with-body -sS -H "Authorization: Bearer $OIDC_TOKEN" "$BRIDGE")"
           export WORK_JSON
-          PENDING="$(python3 - <<'PY'
+          PENDING_COUNTS="$(python3 - <<'PY'
           import json, os
           payload=json.loads(os.environ["WORK_JSON"])
           assert payload.get("ok") is True, payload
           x=payload["work"]
           assert len(x)==12, len(x)
-          print(sum(1 for r in x if not r.get("processed",False)))
+          assert sum(1 for r in x if r["agent_id"]=="SORA_03")==1
+          pending=[r for r in x if not r.get("processed",False)]
+          other=sum(1 for r in pending if r["agent_id"]!="SORA_03")
+          canonical=sum(1 for r in pending if r["agent_id"]=="SORA_03" and r.get("unread_count",0)>0)
+          print(other,canonical)
           PY
           )"
-          echo "OPEN_ROOM_PENDING_PATROLS=$PENDING"
-          if [ "$PENDING" -gt 0 ]; then
+          read -r OTHER_PENDING SORA03_PENDING <<<"$PENDING_COUNTS"
+          echo "OPEN_ROOM_OTHER_PENDING_PATROLS=$OTHER_PENDING"
+          echo "OPEN_ROOM_CANONICAL_SORA03_PENDING_PATROLS=$SORA03_PENDING"
+          if [ "$OTHER_PENDING" -gt 0 ]; then
             curl --fail-with-body --retry 5 --retry-all-errors               -X POST               -H "Accept: application/vnd.github+json"               -H "Authorization: Bearer $GH_TOKEN"               -H "X-GitHub-Api-Version: 2026-03-10"               "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/open-room-actor-canary-v1.yml/dispatches"               -d '{"ref":"main"}'
             echo "OPEN_ROOM_ACTOR_WAKE_DISPATCHED=PASS"
           else
             echo "OPEN_ROOM_ACTOR_WAKE_DISPATCHED=SKIP_ALREADY_PROCESSED"
+          fi
+
+          # PR176 reserves SORA_03 for its canonical Chat BODY.
+          # This route never uses the Ollama substitute for SORA_03.
+          if [ "$SORA03_PENDING" -gt 0 ] && [ "${SORA03_CANONICAL_ADAPTER_READY:-false}" = "true" ]; then
+            curl --fail-with-body -sS \
+              -X POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/sora03-canonical-body.yml/dispatches" \
+              -d '{"ref":"main"}'
+            echo "OPEN_ROOM_CANONICAL_SORA03_WAKE_DISPATCHED=QUEUED"
+          else
+            echo "OPEN_ROOM_CANONICAL_SORA03_WAKE_DISPATCHED=SKIP_NO_WORK_OR_ADAPTER_NOT_READY"
           fi
 
       - name: Permanent GO self-dispatch

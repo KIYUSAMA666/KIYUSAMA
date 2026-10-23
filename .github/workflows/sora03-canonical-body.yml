@@ -1,0 +1,36 @@
+name: SORA03 canonical BODY adapter preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: sora03-canonical-body-owner
+  cancel-in-progress: false
+
+jobs:
+  canonical-preflight:
+    if: github.repository == 'KIYUSAMA666/KIYUSAMA' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Windows, sora03-canonical]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Existing OIDC work preflight only
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = $env:ACTIONS_ID_TOKEN_REQUEST_URL + '&audience=kiyusama-open-room'
+          $oidc = Invoke-RestMethod -Uri $url -Headers @{Authorization=('Bearer ' + $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN)}
+          Write-Output ('::add-mask::' + $oidc.value)
+          $env:SORA03_OIDC_TOKEN = $oidc.value
+          try {
+            node scripts/sora03-canonical-body.mjs --plan
+            if ($LASTEXITCODE -ne 0) { throw 'Canonical adapter preflight failed' }
+          } finally {
+            Remove-Item Env:SORA03_OIDC_TOKEN -ErrorAction SilentlyContinue
+          }
