@@ -1,0 +1,16 @@
+name: Guardian RETURN isolated check
+on:
+  push:
+    branches: [sora/fix-return-test-ledger-20261009]
+  workflow_dispatch:
+jobs:
+  return-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test guardian/return-gate.test.mjs
