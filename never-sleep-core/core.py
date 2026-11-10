@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""NEVER SLEEP CORE v0.2 - 台帳・心臓・引き継ぎ書。標準ライブラリのみ。
-v0.2: 二重実行を防ぐ鍵(ロック)を追加。承認した人を必ず記録する。"""
+"""NEVER SLEEP CORE v0.3 - 台帳・心臓・引き継ぎ書。標準ライブラリのみ。
+v0.2: 二重実行を防ぐ鍵(ロック)を追加。承認した人を必ず記録する。
+v0.3: Codex-K点検(2026-11-10)の指摘を反映。鍵に持ち主の印、他人の鍵は消さない/実行前に running を保存し落ちたら再実行しない/ID全長/保存はfsync+一意の一時ファイル。"""
 import json, os, sys, time, uuid, argparse, tempfile, shutil, contextlib
 HERE = os.environ.get("NSC_DIR", os.path.dirname(os.path.abspath(__file__)))
 JOBS = os.path.join(HERE, "jobs.json")
@@ -15,30 +16,42 @@ def now(): return time.strftime("%Y-%m-%d %H:%M:%S")
 
 @contextlib.contextmanager
 def locked():
-    """読む→変える→書くの間、他の実行を入れない。鍵は1つのファイル(作れた人だけが持ち主)。"""
+    """読む→変える→書くの間、他の実行を入れない。鍵ファイルに持ち主の印(token)を書き、自分の印のときだけ返す。"""
+    token = uuid.uuid4().hex
     start = time.time()
     while True:
         try:
             fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, str(os.getpid()).encode()); os.close(fd)
+            os.write(fd, token.encode()); os.close(fd)
             break
         except FileExistsError:
             try:
-                if time.time() - os.path.getmtime(LOCK) > LOCK_STALE: os.remove(LOCK); continue
+                if time.time() - os.path.getmtime(LOCK) > LOCK_STALE:
+                    # 古い鍵は、いったん自分専用の名前に移してから、まだ古いことを確かめて捨てる(新しい鍵を巻き込まない)
+                    mine = LOCK + ".stale." + token
+                    os.rename(LOCK, mine)
+                    if time.time() - os.path.getmtime(mine) > LOCK_STALE: os.remove(mine)
+                    else:
+                        try: os.rename(mine, LOCK)      # 新しい鍵だった: 戻す
+                        except OSError: pass
+                    continue
             except OSError: pass
             if time.time() - start > LOCK_WAIT: raise RuntimeError("鍵が取れない(他が作業中)")
             time.sleep(0.05)
     try: yield
     finally:
-        try: os.remove(LOCK)
+        try:
+            with open(LOCK, encoding="utf-8") as f: owner = f.read()
+            if owner == token: os.remove(LOCK)          # 自分の鍵のときだけ返す
         except OSError: pass
 
 def load():
     if not os.path.exists(JOBS): return {"jobs": []}
     with open(JOBS, encoding="utf-8") as f: return json.load(f)
 def save(d):
-    tmp = JOBS + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f: json.dump(d, f, ensure_ascii=False, indent=2)
+    tmp = JOBS + "." + uuid.uuid4().hex[:8] + ".tmp"      # 一時ファイルは毎回別名
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2); f.flush(); os.fsync(f.fileno())
     os.replace(tmp, JOBS)
 
 # --- 仕事の種類(GREENだけ) ---
@@ -51,7 +64,7 @@ KINDS = {"note": run_note, "check_file": run_check_file}
 
 def add(title, kind, power, payload):
     with locked():
-        d = load(); jid = uuid.uuid4().hex[:6]
+        d = load(); jid = uuid.uuid4().hex
         st = "pending" if power == "GREEN" else "blocked"
         d["jobs"].append({"id": jid, "title": title, "kind": kind, "power": power, "payload": payload,
                           "status": st, "fails": 0, "created": now(), "log": []})
@@ -73,6 +86,10 @@ def approve(jid, by):
 def tick():
     with locked():
         d = load(); did = None
+        # 前回の実行中に落ちた仕事は、二重実行を避けるため再実行しない(failed にして人/AIが確認する)
+        for j in d["jobs"]:
+            if j["status"] == "running":
+                j["status"] = "failed"; j["log"].append(now() + " 前回の実行中に止まった可能性。二重実行を避けるため再実行しない。確認して作り直す")
         for j in d["jobs"]:
             if j["status"] != "pending": continue
             if j["power"] != "GREEN" and not (j.get("approved") and j.get("approved_by")):
@@ -80,11 +97,12 @@ def tick():
             fn = KINDS.get(j["kind"])
             if not fn:
                 j["status"] = "failed"; j["log"].append(now() + " 不明な種類: " + j["kind"]); did = j["id"]; break
+            j["status"] = "running"; j["log"].append(now() + " 開始"); save(d)   # 実行前に印を保存
             try:
                 msg = fn(j); j["status"] = "done"; j["log"].append(now() + " OK " + msg)
             except Exception as e:
                 j["fails"] += 1; j["log"].append(now() + " NG " + str(e))
-                if j["fails"] >= MAX_FAILS: j["status"] = "failed"   # 3回目はやらない
+                j["status"] = "failed" if j["fails"] >= MAX_FAILS else "pending"
             did = j["id"]; break                              # 1回に1件まで
         save(d)
         with open(BEAT, "w", encoding="utf-8") as f:
@@ -99,7 +117,7 @@ def handoff(d):
         with open(BEAT, encoding="utf-8") as f: beat = json.load(f).get("last_tick", "")
     L = ["# 引き継ぎ書(自動生成・手で書かない)", "", "更新: " + now() + " / 最後の心拍: " + (beat or "不明"), "",
          "件数: " + ", ".join(k + "=" + str(v) for k, v in sorted(c.items())) if c else "件数: 仕事なし", ""]
-    for title, st in [("承認待ち(blocked)", "blocked"), ("失敗(failed) 理由を読んで直す", "failed"),
+    for title, st in [("承認待ち(blocked)", "blocked"), ("実行中(running)", "running"), ("失敗(failed) 理由を読んで直す", "failed"),
                       ("これから(pending)", "pending"), ("終わった(done) 直近5件", "done")]:
         js = [j for j in d["jobs"] if j["status"] == st]
         if st == "done": js = js[-5:]
@@ -132,6 +150,19 @@ def selftest():
         assert approve(r, "oyaji") and tick() == r and {j["id"]: j["status"] for j in load()["jobs"]}[r] == "done"
         assert [j for j in load()["jobs"] if j["id"] == r][0]["approved_by"] == "oyaji"
         assert "failed" in open(HAND, encoding="utf-8").read()
+        # v0.3: 落ちた running は再実行されず failed になる
+        e = add("落ちた想定", "note", "GREEN", "x")
+        dd = load()
+        for j in dd["jobs"]:
+            if j["id"] == e: j["status"] = "running"
+        save(dd); tick()
+        assert {j["id"]: j["status"] for j in load()["jobs"]}[e] == "failed"
+        # v0.3: 他人の鍵は返さない
+        with locked():
+            with open(LOCK, "w", encoding="utf-8") as f: f.write("someone-else")
+        assert os.path.exists(LOCK) and open(LOCK).read() == "someone-else"
+        os.remove(LOCK)
+        assert len(a) == 32                               # IDは全長
         assert not os.path.exists(LOCK)                  # 鍵は必ず返される
         print("SELFTEST OK")
     finally: shutil.rmtree(tmp)
