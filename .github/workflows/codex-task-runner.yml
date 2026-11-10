@@ -1,6 +1,8 @@
 name: Codex Task Runner
 
 on:
+  repository_dispatch:
+    types: [codex_s_wake]
   schedule:
     - cron: '*/5 * * * *'
   push:

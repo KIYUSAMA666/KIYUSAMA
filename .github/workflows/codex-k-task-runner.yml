@@ -1,6 +1,8 @@
 name: Codex-K Task Runner
 
 on:
+  repository_dispatch:
+    types: [codex_k_wake]
   schedule:
     - cron: '2-57/5 * * * *'
   push:
