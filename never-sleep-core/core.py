@@ -1,13 +1,38 @@
 #!/usr/bin/env python3
-"""NEVER SLEEP CORE v0.1 - 台帳・心臓・引き継ぎ書。標準ライブラリのみ。"""
-import json, os, sys, time, uuid, argparse, tempfile, shutil
+"""NEVER SLEEP CORE v0.2 - 台帳・心臓・引き継ぎ書。標準ライブラリのみ。
+v0.2: 二重実行を防ぐ鍵(ロック)を追加。承認した人を必ず記録する。"""
+import json, os, sys, time, uuid, argparse, tempfile, shutil, contextlib
 HERE = os.environ.get("NSC_DIR", os.path.dirname(os.path.abspath(__file__)))
 JOBS = os.path.join(HERE, "jobs.json")
 BEAT = os.path.join(HERE, "heartbeat.json")
 HAND = os.path.join(HERE, "handoff.md")
+LOCK = os.path.join(HERE, "core.lock")
 MAX_FAILS = 2
+LOCK_WAIT = 15.0      # 鍵を待つ最大秒数
+LOCK_STALE = 60.0     # この秒数より古い鍵は、落ちた持ち主のものとして外す
 
 def now(): return time.strftime("%Y-%m-%d %H:%M:%S")
+
+@contextlib.contextmanager
+def locked():
+    """読む→変える→書くの間、他の実行を入れない。鍵は1つのファイル(作れた人だけが持ち主)。"""
+    start = time.time()
+    while True:
+        try:
+            fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode()); os.close(fd)
+            break
+        except FileExistsError:
+            try:
+                if time.time() - os.path.getmtime(LOCK) > LOCK_STALE: os.remove(LOCK); continue
+            except OSError: pass
+            if time.time() - start > LOCK_WAIT: raise RuntimeError("鍵が取れない(他が作業中)")
+            time.sleep(0.05)
+    try: yield
+    finally:
+        try: os.remove(LOCK)
+        except OSError: pass
+
 def load():
     if not os.path.exists(JOBS): return {"jobs": []}
     with open(JOBS, encoding="utf-8") as f: return json.load(f)
@@ -25,38 +50,46 @@ def run_check_file(j):
 KINDS = {"note": run_note, "check_file": run_check_file}
 
 def add(title, kind, power, payload):
-    d = load(); jid = uuid.uuid4().hex[:6]
-    st = "pending" if power == "GREEN" else "blocked"
-    d["jobs"].append({"id": jid, "title": title, "kind": kind, "power": power, "payload": payload,
-                      "status": st, "fails": 0, "created": now(), "log": []})
-    save(d); handoff(d); return jid
+    with locked():
+        d = load(); jid = uuid.uuid4().hex[:6]
+        st = "pending" if power == "GREEN" else "blocked"
+        d["jobs"].append({"id": jid, "title": title, "kind": kind, "power": power, "payload": payload,
+                          "status": st, "fails": 0, "created": now(), "log": []})
+        save(d); handoff(d); return jid
 
-def approve(jid):
-    d = load()
-    for j in d["jobs"]:
-        if j["id"] == jid and j["status"] == "blocked":
-            j["status"] = "pending"; j["approved"] = True; j["log"].append(now() + " 親父が承認"); save(d); handoff(d); return True
-    return False
+def approve(jid, by):
+    """承認した人(by)を必ず記録する。名前なしでは承認できない。"""
+    by = (by or "").strip()
+    if not by: raise ValueError("承認者の名前(--by)が必要")
+    with locked():
+        d = load()
+        for j in d["jobs"]:
+            if j["id"] == jid and j["status"] == "blocked":
+                j["status"] = "pending"; j["approved"] = True
+                j["approved_by"] = by; j["approved_at"] = now()
+                j["log"].append(now() + " 承認: " + by); save(d); handoff(d); return True
+        return False
 
 def tick():
-    d = load(); did = None
-    for j in d["jobs"]:
-        if j["status"] != "pending": continue
-        if j["power"] != "GREEN" and not j.get("approved"):
-            j["status"] = "blocked"; continue          # 念のため二重チェック
-        fn = KINDS.get(j["kind"])
-        if not fn:
-            j["status"] = "failed"; j["log"].append(now() + " 不明な種類: " + j["kind"]); did = j["id"]; break
-        try:
-            msg = fn(j); j["status"] = "done"; j["log"].append(now() + " OK " + msg)
-        except Exception as e:
-            j["fails"] += 1; j["log"].append(now() + " NG " + str(e))
-            if j["fails"] >= MAX_FAILS: j["status"] = "failed"   # 3回目はやらない
-        did = j["id"]; break                              # 1回に1件まで
-    save(d)
-    with open(BEAT, "w", encoding="utf-8") as f:
-        json.dump({"last_tick": now(), "worked_on": did}, f, ensure_ascii=False)
-    handoff(d); return did
+    with locked():
+        d = load(); did = None
+        for j in d["jobs"]:
+            if j["status"] != "pending": continue
+            if j["power"] != "GREEN" and not (j.get("approved") and j.get("approved_by")):
+                j["status"] = "blocked"; continue          # 承認者の記録がなければ動かさない
+            fn = KINDS.get(j["kind"])
+            if not fn:
+                j["status"] = "failed"; j["log"].append(now() + " 不明な種類: " + j["kind"]); did = j["id"]; break
+            try:
+                msg = fn(j); j["status"] = "done"; j["log"].append(now() + " OK " + msg)
+            except Exception as e:
+                j["fails"] += 1; j["log"].append(now() + " NG " + str(e))
+                if j["fails"] >= MAX_FAILS: j["status"] = "failed"   # 3回目はやらない
+            did = j["id"]; break                              # 1回に1件まで
+        save(d)
+        with open(BEAT, "w", encoding="utf-8") as f:
+            json.dump({"last_tick": now(), "worked_on": did}, f, ensure_ascii=False)
+        handoff(d); return did
 
 def handoff(d):
     c = {}
@@ -66,7 +99,7 @@ def handoff(d):
         with open(BEAT, encoding="utf-8") as f: beat = json.load(f).get("last_tick", "")
     L = ["# 引き継ぎ書(自動生成・手で書かない)", "", "更新: " + now() + " / 最後の心拍: " + (beat or "不明"), "",
          "件数: " + ", ".join(k + "=" + str(v) for k, v in sorted(c.items())) if c else "件数: 仕事なし", ""]
-    for title, st in [("親父の承認待ち(blocked)", "blocked"), ("失敗(failed) 理由を読んで直す", "failed"),
+    for title, st in [("承認待ち(blocked)", "blocked"), ("失敗(failed) 理由を読んで直す", "failed"),
                       ("これから(pending)", "pending"), ("終わった(done) 直近5件", "done")]:
         js = [j for j in d["jobs"] if j["status"] == st]
         if st == "done": js = js[-5:]
@@ -76,13 +109,13 @@ def handoff(d):
             last = j["log"][-1] if j["log"] else ""
             L.append("- [%s] %s (%s, %s) %s" % (j["id"], j["title"], j["kind"], j["power"], last))
         L.append("")
-    L += ["## 起きたAIの最初の手順", "1. この書類だけ読む。2. failed があれば理由を直す。3. blocked は親父に聞く。4. 回線の再テストはしない。"]
+    L += ["## 起きたAIの最初の手順", "1. この書類だけ読む。2. failed があれば理由を直す。3. blocked は承認者を決めて承認(--by 名前)。4. 回線の再テストはしない。"]
     with open(HAND, "w", encoding="utf-8") as f: f.write("\n".join(L) + "\n")
 
 def selftest():
-    global HERE, JOBS, BEAT, HAND
+    global HERE, JOBS, BEAT, HAND, LOCK
     tmp = tempfile.mkdtemp(); HERE = tmp
-    JOBS, BEAT, HAND = (os.path.join(tmp, n) for n in ("jobs.json", "heartbeat.json", "handoff.md"))
+    JOBS, BEAT, HAND, LOCK = (os.path.join(tmp, n) for n in ("jobs.json", "heartbeat.json", "handoff.md", "core.lock"))
     try:
         a = add("メモ", "note", "GREEN", "テスト")
         b = add("存在確認(ある)", "check_file", "GREEN", HAND if os.path.exists(HAND) else JOBS)
@@ -94,8 +127,12 @@ def selftest():
         d = load(); st = {j["id"]: j["status"] for j in d["jobs"]}
         assert st[a] == "done" and st[b] == "done" and st[c] == "failed" and st[r] == "blocked", st
         assert tick() is None
-        assert approve(r) and tick() == r and {j["id"]: j["status"] for j in load()["jobs"]}[r] == "done"
+        try: approve(r, ""); assert False, "名前なしで承認できてしまった"
+        except ValueError: pass
+        assert approve(r, "oyaji") and tick() == r and {j["id"]: j["status"] for j in load()["jobs"]}[r] == "done"
+        assert [j for j in load()["jobs"] if j["id"] == r][0]["approved_by"] == "oyaji"
         assert "failed" in open(HAND, encoding="utf-8").read()
+        assert not os.path.exists(LOCK)                  # 鍵は必ず返される
         print("SELFTEST OK")
     finally: shutil.rmtree(tmp)
 
@@ -104,11 +141,13 @@ if __name__ == "__main__":
     s.add_parser("tick"); s.add_parser("status"); s.add_parser("selftest")
     a = s.add_parser("add"); a.add_argument("title"); a.add_argument("--kind", default="note")
     a.add_argument("--power", default="GREEN", choices=["GREEN", "YELLOW", "RED"]); a.add_argument("--payload", default="")
-    ap = s.add_parser("approve"); ap.add_argument("id")
+    ap = s.add_parser("approve"); ap.add_argument("id"); ap.add_argument("--by", default="")
     x = p.parse_args()
     if x.cmd == "tick": print("worked_on:", tick())
     elif x.cmd == "status": handoff(load()); print(open(HAND, encoding="utf-8").read())
     elif x.cmd == "add": print("id:", add(x.title, x.kind, x.power, x.payload))
-    elif x.cmd == "approve": print("approved" if approve(x.id) else "not found / not blocked")
+    elif x.cmd == "approve":
+        try: print("approved" if approve(x.id, x.by) else "not found / not blocked")
+        except ValueError as e: print("拒否:", e); sys.exit(2)
     elif x.cmd == "selftest": selftest()
     else: p.print_help()
