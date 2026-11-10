@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""NEVER SLEEP CORE v0.3 - 台帳・心臓・引き継ぎ書。標準ライブラリのみ。
+"""NEVER SLEEP CORE v0.4 - 台帳・心臓・引き継ぎ書。標準ライブラリのみ。
 v0.2: 二重実行を防ぐ鍵(ロック)を追加。承認した人を必ず記録する。
-v0.3: Codex-K点検(2026-11-10)の指摘を反映。鍵に持ち主の印、他人の鍵は消さない/実行前に running を保存し落ちたら再実行しない/ID全長/保存はfsync+一意の一時ファイル。"""
+v0.3: Codex-K点検(2026-11-10)の指摘を反映。鍵に持ち主の印、他人の鍵は消さない/実行前に running を保存し落ちたら再実行しない/ID全長/保存はfsync+一意の一時ファイル。
+v0.4: 出来事で動く。add --run(仕事が入ったらその場で動かす)と tick --all(空になるまで、上限つきで続けて動かす)。定期の時計は使わない。"""
 import json, os, sys, time, uuid, argparse, tempfile, shutil, contextlib
 HERE = os.environ.get("NSC_DIR", os.path.dirname(os.path.abspath(__file__)))
 JOBS = os.path.join(HERE, "jobs.json")
@@ -9,6 +10,7 @@ BEAT = os.path.join(HERE, "heartbeat.json")
 HAND = os.path.join(HERE, "handoff.md")
 LOCK = os.path.join(HERE, "core.lock")
 MAX_FAILS = 2
+MAX_BATCH = 20        # tick --all で1回に進める最大件数(暴走防止)
 LOCK_WAIT = 15.0      # 鍵を待つ最大秒数
 LOCK_STALE = 60.0     # この秒数より古い鍵は、落ちた持ち主のものとして外す
 
@@ -109,6 +111,15 @@ def tick():
             json.dump({"last_tick": now(), "worked_on": did}, f, ensure_ascii=False)
         handoff(d); return did
 
+def tick_all(limit=MAX_BATCH):
+    """進める仕事がなくなるまで、上限つきで続けて動かす。動かした仕事のIDの一覧を返す。"""
+    done = []
+    for _ in range(limit):
+        j = tick()
+        if j is None: break
+        done.append(j)
+    return done
+
 def handoff(d):
     c = {}
     for j in d["jobs"]: c[j["status"]] = c.get(j["status"], 0) + 1
@@ -163,20 +174,27 @@ def selftest():
         assert os.path.exists(LOCK) and open(LOCK).read() == "someone-else"
         os.remove(LOCK)
         assert len(a) == 32                               # IDは全長
+        # v0.4: tick_all は空になるまで進め、上限を超えない
+        for i in range(3): add("連続%d" % i, "note", "GREEN", "x")
+        got = tick_all(); assert len(got) == 3 and tick() is None, got
+        for i in range(5): add("上限%d" % i, "note", "GREEN", "x")
+        assert len(tick_all(limit=2)) == 2 and len(tick_all()) == 3
         assert not os.path.exists(LOCK)                  # 鍵は必ず返される
         print("SELFTEST OK")
     finally: shutil.rmtree(tmp)
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(); s = p.add_subparsers(dest="cmd")
-    s.add_parser("tick"); s.add_parser("status"); s.add_parser("selftest")
+    t = s.add_parser("tick"); t.add_argument("--all", action="store_true"); s.add_parser("status"); s.add_parser("selftest")
     a = s.add_parser("add"); a.add_argument("title"); a.add_argument("--kind", default="note")
-    a.add_argument("--power", default="GREEN", choices=["GREEN", "YELLOW", "RED"]); a.add_argument("--payload", default="")
+    a.add_argument("--power", default="GREEN", choices=["GREEN", "YELLOW", "RED"]); a.add_argument("--payload", default=""); a.add_argument("--run", action="store_true")
     ap = s.add_parser("approve"); ap.add_argument("id"); ap.add_argument("--by", default="")
     x = p.parse_args()
-    if x.cmd == "tick": print("worked_on:", tick())
+    if x.cmd == "tick": print("worked_on:", tick_all() if x.all else tick())
     elif x.cmd == "status": handoff(load()); print(open(HAND, encoding="utf-8").read())
-    elif x.cmd == "add": print("id:", add(x.title, x.kind, x.power, x.payload))
+    elif x.cmd == "add":
+        jid = add(x.title, x.kind, x.power, x.payload); print("id:", jid)
+        if x.run: print("worked_on:", tick_all())          # 出来事(仕事が入った)で、その場で動かす
     elif x.cmd == "approve":
         try: print("approved" if approve(x.id, x.by) else "not found / not blocked")
         except ValueError as e: print("拒否:", e); sys.exit(2)
